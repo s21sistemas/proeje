@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, ActivityIndicator, StyleSheet, Image, Pressable } from 'react-native';
+import { View, Text, TextInput, ActivityIndicator, StyleSheet, Pressable, Image } from 'react-native';
 import { db } from '../database/firebaseConfig';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 
@@ -15,38 +15,61 @@ const LoginScreen = ({ navigation }) => {
 
     setLoading(true);
     try {
-      const q = query(collection(db, "guardias"), where("numeroEmpleado", "==", numeroEmpleado));
-      const querySnapshot = await getDocs(q);
+      // Buscar primero en guardias
+      const qGuardias = query(collection(db, "guardias"), where("numeroEmpleado", "==", numeroEmpleado));
+      const guardiasSnapshot = await getDocs(qGuardias);
       
-      if (!querySnapshot.empty) {
-        navigation.replace('MainTabs');
-      } else {
-        alert('Número de empleado no registrado');
+      if (!guardiasSnapshot.empty) {
+        const guardiaData = guardiasSnapshot.docs[0].data();
+        navigation.replace('MainTabs', {
+          nombre: guardiaData.nombre,
+          numeroEmpleado: guardiaData.numeroEmpleado,
+          rol: 'guardia'
+        });
+        return;
       }
+
+      // Si no es guardia, buscar en supervisores
+      const qSupervisores = query(collection(db, "supervisores"), where("numeroEmpleado", "==", numeroEmpleado));
+      const supervisoresSnapshot = await getDocs(qSupervisores);
+      
+      if (!supervisoresSnapshot.empty) {
+        const supervisorData = supervisoresSnapshot.docs[0].data();
+        navigation.replace('SupervisorTabs', {
+          nombre: supervisorData.nombre,
+          numeroEmpleado: supervisorData.numeroEmpleado,
+          rol: 'supervisor'
+        });
+        return;
+      }
+
+      alert('Número de empleado no registrado');
     } catch (error) {
       console.error("Error al autenticar:", error);
       alert('Error al verificar el número de empleado');
     }
     setLoading(false);
   };
+
   return (
     <View style={styles.container}>
       <Image 
-        source={require('../assets/logoP.jpg')} // Asegúrate de tener esta imagen en tu proyecto
+        source={require('../assets/logoP.jpg')}
         style={styles.logo}
         resizeMode="contain"
       />
       
       <Text style={styles.title}>Sistema de Checado</Text>
-      
+      <Text style={styles.subtitle}>Seguridad Corporativa</Text>
 
       <View style={styles.formContainer}>
         <TextInput
           style={styles.input}
           placeholder="Número de empleado"
-          placeholderTextColor="#666"
+          placeholderTextColor="gs-0001vmgm/sp-0001vmgm"
           value={numeroEmpleado}
           onChangeText={setNumeroEmpleado}
+
         />
         
         <Pressable 
@@ -68,8 +91,8 @@ const LoginScreen = ({ navigation }) => {
       <Text style={styles.footerText}>Protegiendo tu trabajo, cuidando tu seguridad</Text>
     </View>
   );
+};
 
-}
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -114,11 +137,6 @@ const styles = StyleSheet.create({
     color: '#0A1E3D',
     borderWidth: 1,
     borderColor: '#E3E9F2',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
   },
   button: {
     backgroundColor: '#1E4A8D',
@@ -126,15 +144,9 @@ const styles = StyleSheet.create({
     height: 50,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 5,
   },
   buttonPressed: {
     backgroundColor: '#15325E',
-    opacity: 0.9,
   },
   buttonText: {
     color: '#FFFFFF',

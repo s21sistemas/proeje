@@ -4,15 +4,15 @@ import { getFirestore } from "firebase/firestore";
 import { initializeApp } from "firebase/app";
 import { getStorage } from "firebase/storage";
 
+
+
 const firebaseConfig = {
-  apiKey: "AIzaSyDB5f03HQyNZaR9qowKDmz8GssoIDY7xuI",
-  authDomain: "talleresunidos-a963f.firebaseapp.com",
-  databaseURL: "https://talleresunidos-a963f-default-rtdb.firebaseio.com",
-  projectId: "talleresunidos-a963f",
-  storageBucket: "talleresunidos-a963f.firebasestorage.app",
-  messagingSenderId: "68324831403",
-  appId: "1:68324831403:web:b35403b1ee756fdfba07ee",
-  measurementId: "G-6GK914RQT4"
+  apiKey: "AIzaSyDA3Vlj5YM0gIR40eH-JDMAd28DPFtxcm4",
+  authDomain: "proeje-bbc0c.firebaseapp.com",
+  projectId: "proeje-bbc0c",
+  storageBucket: "proeje-bbc0c.firebasestorage.app",
+  messagingSenderId: "23539267147",
+  appId: "1:23539267147:web:a394968f418c6614d97fce"
 };
 
 // Initialize Firebase

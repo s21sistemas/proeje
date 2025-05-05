@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -8,24 +8,31 @@ import {
   ScrollView, 
   StyleSheet, 
   Pressable, 
-  ActivityIndicator 
+  ActivityIndicator
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { db } from "../database/firebaseConfig";
 import { collection, addDoc } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import ViewShot from 'react-native-view-shot';
+import * as MediaLibrary from 'expo-media-library';
 
-export default function checkGuardias() {
+export default function CheckGuardias({ route }) {
+  const { nombre, numeroEmpleado } = route.params;
   const [comentarios, setComentarios] = useState("");
   const [foto, setFoto] = useState("");
+  const [fotoConMarca, setFotoConMarca] = useState("");
   const [ubicacion, setUbicacion] = useState(null);
   const [direccion, setDireccion] = useState("");
   const [hora, setHora] = useState("");
+  const [fechaHora, setFechaHora] = useState("");
   const [tipoCheck, setTipoCheck] = useState("");
   const [hasCameraPermission, setHasCameraPermission] = useState(null);
   const [hasLocationPermission, setHasLocationPermission] = useState(null);
+  const [hasMediaPermission, setHasMediaPermission] = useState(null);
   const [loading, setLoading] = useState(false);
+  const viewShotRef = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -34,6 +41,9 @@ export default function checkGuardias() {
 
       const locationStatus = await Location.requestForegroundPermissionsAsync();
       setHasLocationPermission(locationStatus.status === 'granted');
+
+      const mediaStatus = await MediaLibrary.requestPermissionsAsync();
+      setHasMediaPermission(mediaStatus.status === 'granted');
     })();
   }, []);
 
@@ -43,16 +53,60 @@ export default function checkGuardias() {
       return;
     }
 
-    let result = await ImagePicker.launchCameraAsync({
-      allowsEditing: false,
-      aspect: [4, 3],
-      quality: 1,
-    });
+    try {
+      setLoading(true);
+      const ahora = new Date();
+      const fechaHoraStr = ahora.toLocaleString('es-MX', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+      setFechaHora(fechaHoraStr);
 
-    if (!result.canceled && result.assets.length > 0) {
-      setFoto(result.assets[0].uri);
-    } else {
-      Alert.alert('Error', 'No se pudo capturar la foto.');
+      let result = await ImagePicker.launchCameraAsync({
+        allowsEditing: false,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets.length > 0) {
+        setFoto(result.assets[0].uri);
+      } else {
+        Alert.alert('Error', 'No se pudo capturar la foto.');
+      }
+    } catch (error) {
+      console.error("Error al tomar foto:", error);
+      Alert.alert("Error", "No se pudo capturar la foto");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const capturarConMarcaAgua = async () => {
+    if (!foto) {
+      Alert.alert('Error', 'Primero debes tomar una foto');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const uri = await viewShotRef.current.capture();
+      setFotoConMarca(uri);
+      
+      // Guardar la imagen en el album (opcional)
+      if (hasMediaPermission) {
+        await MediaLibrary.saveToLibraryAsync(uri);
+      }
+      
+      Alert.alert('Éxito', 'Registro guardado en la foto');
+    } catch (error) {
+      console.error("Error al capturar vista:", error);
+      Alert.alert("Error", "No se pudo agregar la marca de agua");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -66,18 +120,15 @@ export default function checkGuardias() {
       setLoading(true);
       setTipoCheck(tipo);
       
-      // Obtener ubicación
       let location = await Location.getCurrentPositionAsync({});
       setUbicacion(location.coords);
       
-      // Obtener dirección a partir de coordenadas
       const address = await Location.reverseGeocodeAsync(location.coords);
       if (address.length > 0) {
         const dir = `${address[0].street}, ${address[0].city}, ${address[0].region}, ${address[0].country}`;
         setDireccion(dir);
       }
       
-      // Obtener hora actual
       const ahora = new Date();
       const horaStr = ahora.toLocaleTimeString();
       setHora(horaStr);
@@ -112,36 +163,42 @@ export default function checkGuardias() {
       return;
     }
 
+    if (!fotoConMarca) {
+      Alert.alert("Error", "Debes generar la foto con marca de agua primero");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      let imageURL = "";
-      if (foto) {
-        imageURL = await uploadImageToFirebase(foto);
-      }
+      let imageURL = await uploadImageToFirebase(fotoConMarca);
 
       const checkData = {
-        nombre: "Juan Perez",
-        codigo: "GS-0001jp",
+        nombre,
+        numeroEmpleado,
         tipo: tipoCheck,
         ubicacion: direccion || "Ubicación no disponible",
         coordenadas: ubicacion,
         hora: hora,
+        fechaHora: fechaHora,
         comentarios: comentarios,
         foto: imageURL,
-        fecha: new Date().toISOString()
+        fecha: new Date().toISOString(),
+        estado: "Pendiente"
       };
 
       await addDoc(collection(db, "guardias_check"), checkData);
 
       Alert.alert("Éxito", `Check ${tipoCheck === 'in' ? 'In' : 'Out'} registrado correctamente`);
 
-      // Limpiar formulario (excepto los permisos)
+      // Limpiar formulario
       setComentarios("");
       setFoto("");
+      setFotoConMarca("");
       setUbicacion(null);
       setDireccion("");
       setHora("");
+      setFechaHora("");
       setTipoCheck("");
     } catch (error) {
       console.error("Error al guardar:", error);
@@ -153,9 +210,16 @@ export default function checkGuardias() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <View style={styles.profileHeader}>
+        <View style={styles.profileInfo}>
+          <Text style={styles.profileName}>{nombre}</Text>
+          <Text style={styles.profileBadge}>Empleado #{numeroEmpleado}</Text>
+        </View>
+      </View>
+
       <View style={styles.headerContainer}>
-        <Text style={styles.header}>Juan Perez</Text>
-        <Text style={styles.subheader}>GS-0001jp</Text>
+        <Text style={styles.header}>Registro de servicio</Text>
+        <Text style={styles.subheader}>Selecciona tu tipo de check</Text>
       </View>
 
       <View style={styles.buttonContainer}>
@@ -191,10 +255,32 @@ export default function checkGuardias() {
         style={styles.button}
         disabled={loading}
       >
-        <Text style={styles.buttonText}>Tomar foto</Text>
+        <Text style={styles.buttonText}>Tomar foto de evidencia</Text>
       </Pressable>
       
-      {foto && <Image source={{ uri: foto }} style={styles.image} />}
+      {foto && (
+        <View style={styles.imageContainer}>
+          <ViewShot 
+            ref={viewShotRef} 
+            options={{ format: "jpg", quality: 0.9 }}
+            style={styles.viewShot}
+          >
+            <Image source={{ uri: foto }} style={styles.image} />
+            <View style={styles.watermarkContainer}>
+              <Text style={styles.watermarkText}>{fechaHora}</Text>
+              <Text style={styles.watermarkText}>{nombre} - {numeroEmpleado}</Text>
+            </View>
+          </ViewShot>
+          
+          <Pressable 
+            onPress={capturarConMarcaAgua} 
+            style={[styles.button, styles.captureButton]}
+            disabled={loading || !foto}
+          >
+            <Text style={styles.buttonText}>Confirmar foto</Text>
+          </Pressable>
+        </View>
+      )}
 
       <Text style={styles.label}>Comentarios:</Text>
       <TextInput
@@ -208,11 +294,11 @@ export default function checkGuardias() {
       />
 
       <Pressable 
-        style={[styles.submitButton, loading && styles.disabledButton]} 
+        style={[styles.submitButton, (loading || !fotoConMarca) && styles.disabledButton]} 
         onPress={enviarCheck} 
-        disabled={loading || !tipoCheck}
+        disabled={loading || !fotoConMarca || !tipoCheck}
       >
-        <Text style={styles.buttonText}>Enviar</Text>
+        <Text style={styles.buttonText}>Enviar Registro</Text>
       </Pressable>
     </ScrollView>
   );
@@ -224,17 +310,46 @@ const styles = StyleSheet.create({
     padding: 20,
     backgroundColor: '#f5f5f5',
   },
+  profileHeader: {
+    marginBottom: 25,
+    backgroundColor: '#0A1E3D',
+    padding: 15,
+    borderRadius: 15,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+  },
+  profileInfo: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFF',
+    marginBottom: 3,
+  },
+  profileBadge: {
+    fontSize: 14,
+    color: '#A0B9D9',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+  },
   headerContainer: {
     marginBottom: 20,
   },
   header: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     textAlign: 'center',
     color: '#333',
   },
   subheader: {
-    fontSize: 18,
+    fontSize: 16,
     textAlign: 'center',
     color: '#555',
   },
@@ -250,10 +365,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
   },
   checkInButton: {
     backgroundColor: '#4CAF50',
@@ -266,18 +377,18 @@ const styles = StyleSheet.create({
   button: {
     marginTop: 15,
     marginBottom: 15,
-    backgroundColor: '#007AFF',
+    backgroundColor: '#1E3A8A',
     borderRadius: 25,
     paddingVertical: 12,
     paddingHorizontal: 25,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
     height: 50,
+  },
+  captureButton: {
+    backgroundColor: '#1E3A8A',
+    marginTop: 10,
   },
   submitButton: {
     marginTop: 20,
@@ -287,10 +398,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
   },
   disabledButton: {
     backgroundColor: '#cccccc',
@@ -300,12 +407,39 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  viewShot: {
+    width: '100%',
+    position: 'relative',
+  },
+  imageContainer: {
+    width: '100%',
+    marginTop: 10,
+    marginBottom: 15,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
   image: {
     width: '100%',
     height: 250,
-    borderRadius: 8,
-    marginTop: 10,
-    marginBottom: 15,
+  },
+  watermarkContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 10,
+  },
+  watermarkText: {
+    color: 'white',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  successText: {
+    color: '#4CAF50',
+    textAlign: 'center',
+    marginTop: 5,
+    fontWeight: 'bold',
   },
   label: {
     fontSize: 16,

@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Talleres-unidos",
+    "name": "Proeje",
     "slug": "Talleres-unidos",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "icon": "./assets/logoP.jpg",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "expo": {
       "permissions": [
@@ -25,7 +25,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.vicyoshioka.Proeje"
     },
     "web": {
       "favicon": "./assets/favicon.png"

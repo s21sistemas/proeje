@@ -5,7 +5,8 @@ import { db } from "../database/firebaseConfig";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { MaterialIcons } from '@expo/vector-icons';
 
-export default function ListarSolicitudesAtendidasScreen() {
+export default function ListarSolicitudesAtendidasScreen({ route }) {
+  const { nombre, numeroEmpleado } = route.params;
   const [facing, setFacing] = useState('back');
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
@@ -60,8 +61,8 @@ export default function ListarSolicitudesAtendidasScreen() {
       await addDoc(collection(db, "RoutesQR"), {
         numero: qrData,
         comentario: comment,
-        numero_empleado: "GS-0001jp",
-        nombre: "Juan Perez",
+        numero_empleado: numeroEmpleado,
+        nombre: nombre,
         fecha: serverTimestamp()
       });
       Alert.alert("Éxito", "Datos guardados correctamente");
