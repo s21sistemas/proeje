@@ -288,19 +288,14 @@ export default function ReporteIncidentesScreen({ route }) {
       contentContainerStyle={styles.container}
       keyboardShouldPersistTaps="handled"
     >
+
       {/* Encabezado */}
       <View style={styles.profileHeader}>
-        <View style={styles.profileInfo}>
-          <Text style={styles.profileName}>{nombre}</Text>
-          <Text style={styles.profileBadge}>Empleado #{numeroEmpleado}</Text>
-        </View>
-      </View>
-
-      {/* Título */}
-      <View style={styles.headerContainer}>
-        <Text style={styles.header}>Reporte de Incidentes</Text>
-        <Text style={styles.subheader}>Complete todos los campos requeridos (*)</Text>
-      </View>
+                   <View style={styles.profileInfo}>
+                     <Text style={styles.profileName}>{nombre}</Text>
+                     <Text style={styles.profileBadge}>Empleado #{numeroEmpleado}</Text>
+                   </View>
+                 </View>
 
       {loading && <ActivityIndicator size="large" color="#009BFF" style={styles.fullScreenLoader} />}
 
@@ -324,6 +319,7 @@ export default function ReporteIncidentesScreen({ route }) {
         >
           <Picker.Item label="DÍA" value="DÍA" />
           <Picker.Item label="NOCHE" value="NOCHE" />
+          <Picker.Item label="24H" value="24H" />
         </Picker>
       </View>
 
@@ -506,29 +502,34 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   profileHeader: {
-    marginBottom: 20,
     backgroundColor: '#0A1E3D',
     padding: 15,
-    borderRadius: 10,
-    elevation: 3,
+    borderRadius: 15,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    marginBottom: 20,
+
   },
   profileInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flex: 1,
   },
   profileName: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: 'white',
+    color: '#FFF',
+    marginBottom: 3,
   },
   profileBadge: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 10,
-    color: '#A0B9D9',
     fontSize: 14,
+    color: '#A0B9D9',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
   },
   headerContainer: {
     marginBottom: 20,
@@ -609,6 +610,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 10,
+    textAlign: 'center',
   },
   photosContainer: {
     marginTop: 10,

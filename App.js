@@ -1,8 +1,10 @@
 import * as React from 'react';
+import { StatusBar } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import LoginScreen from './screens/LoginScreen';
 import CheckGuardias from './screens/checkGuardias';
 import ListarSolicitudesScreen from './screens/ListarSolicitudesScreen';
@@ -12,14 +14,17 @@ import ListarSolicitudesAtendidasScreen from './screens/ListarSolicitudesAtendid
 import ReporteIncidentesScreen from './screens/ReporteIncidentesScreen';
 import DashboardSupervisor from './screens/DashboardSupervisor'; 
 import ReportesScreen from './screens/ReportesSupervisorScreen';
-import BitacoraForm from './screens/BitacoraForm'; // Asegúrate de importar el componente
+import BitacoraForm from './screens/BitacoraForm'; 
+import DetallesOrden from './screens/DetallesOrden';
+import RegistroGuardia from './screens/RegistroGuardia';
+import RegistroUnidad from './screens/ReporteUnidad';
+import ReporteDiarioGuardia from './screens/ReporteDiarioGuardia';
 
 const Tab = createBottomTabNavigator();
 const SupervisorTab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 const SolicitudesStack = createStackNavigator();
-const SupervisorStack = createStackNavigator(); // Nuevo Stack para Supervisores
-
+const SupervisorStack = createStackNavigator(); 
 
 // Nuevo Stack para el flujo de Supervisores
 function SupervisorStackScreen({ route }) {
@@ -28,8 +33,13 @@ function SupervisorStackScreen({ route }) {
       <SupervisorStack.Screen
         name="SupervisorTabs"
         component={SupervisorTabs}
-        initialParams={route?.params} // 👈 asegúrate de pasar los params
+        initialParams={route?.params}
         options={{ headerShown: false }}
+      />
+      <SupervisorStack.Screen
+        name="DetallesOrden"
+        component={DetallesOrden}
+        options={{ title: 'Detalles del servicio' }}
       />
       <SupervisorStack.Screen
         name="BitacoraForm"
@@ -52,15 +62,17 @@ function MainTabs({ route }) {
             iconName = focused ? 'checkmark-circle' : 'checkmark-circle-outline';
           } else if (route.name === 'Solicitudes') {
             iconName = focused ? 'list' : 'list-outline';
-          } else if (route.name === 'Escanear QR') {
+          } else if (route.name === 'Rutas QR') {
             iconName = focused ? 'qr-code' : 'qr-code-outline';
           } else if (route.name === 'Reporte de Incidentes') {
             iconName = focused ? 'warning' : 'warning-outline';
+          } else if (route.name === 'Reporte diario') {
+            iconName = focused ? 'document' : 'document-text-outline';
           }
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#009BFF',
+        tabBarActiveTintColor: '#4CAF50',
         tabBarInactiveTintColor: 'gray',
       })}
     >
@@ -70,13 +82,18 @@ function MainTabs({ route }) {
         initialParams={route.params}
       />
       <Tab.Screen
-        name="Escanear QR"
+        name="Rutas QR"
         component={ListarSolicitudesAtendidasScreen}
         initialParams={route.params}
       />
       <Tab.Screen
         name="Reporte de Incidentes"
         component={ReporteIncidentesScreen}
+        initialParams={route.params}
+      />
+      <Tab.Screen
+        name="Reporte diario"
+        component={ReporteDiarioGuardia}
         initialParams={route.params}
       />
     </Tab.Navigator>
@@ -97,25 +114,42 @@ function SupervisorTabs({ route }) {
             iconName = focused ? 'people' : 'people-outline';
           } else if (route.name === 'Reportes') {
             iconName = focused ? 'document-text' : 'document-text-outline';
+          } else if (route.name === 'Registro de guardia') {
+            iconName = focused ? 'person-add' : 'person-add-outline';
+          }
+          else if (route.name === 'Unidades') {
+            iconName = focused ? 'car-outline' : 'car-sharp';
           }
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#4CAF50', // Verde para diferenciar
+        tabBarActiveTintColor: '#4CAF50',
         tabBarInactiveTintColor: 'gray',
       })}
     >
-      <Tab.Screen 
+      <SupervisorTab.Screen 
         name="Dashboard" 
         component={DashboardSupervisor}
         initialParams={route.params}
         options={{ title: 'Resumen' }}
       />
-      <Tab.Screen
+      <SupervisorTab.Screen
         name="Reportes"
         component={ReportesScreen}
         initialParams={route.params}
         options={{ title: 'Reportes' }}
+      />
+      <SupervisorTab.Screen
+        name="Registro de guardia"
+        component={RegistroGuardia}
+        initialParams={route.params}
+        options={{ title: 'Guardia' }}
+      />
+      <SupervisorTab.Screen
+        name="Unidades"
+        component={RegistroUnidad}
+        initialParams={route.params}
+        options={{ title: 'Unidades' }}
       />
     </SupervisorTab.Navigator>
   );
@@ -124,24 +158,31 @@ function SupervisorTabs({ route }) {
 // Navegación principal
 export default function App() {
   return (
-    <NavigationContainer>
-      <Stack.Navigator>
-        <Stack.Screen
-          name="Login"
-          component={LoginScreen}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="MainTabs"
-          component={MainTabs}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="SupervisorTabs" // Cambiado de SupervisorTabs a SupervisorFlow
-          component={SupervisorStackScreen} // Usamos el nuevo Stack de supervisores
-          options={{ headerShown: false }}
-        />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <SafeAreaProvider>
+       <StatusBar 
+        
+        barStyle="dark-content" // Texto blanco
+        translucent={false} // Opcional: false para Android
+      />
+      <NavigationContainer>
+        <Stack.Navigator>
+          <Stack.Screen
+            name="Login"
+            component={LoginScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="MainTabs"
+            component={MainTabs}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="SupervisorTabs"
+            component={SupervisorStackScreen}
+            options={{ headerShown: false }}
+          />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }

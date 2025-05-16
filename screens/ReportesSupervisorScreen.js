@@ -8,7 +8,9 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Dimensions 
+  Dimensions,
+  Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { db } from '../database/firebaseConfig';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -18,21 +20,32 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 const { width } = Dimensions.get('window');
 
 const ReporteSupervisorScreen = ({ route }) => {
-  const { numeroEmpleado } = route.params;
+  const { nombre, numeroEmpleado } = route.params;
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [showTimePicker, setShowTimePicker] = useState({
+    observaciones: null,
+    consignas: null
+  });
   
-  // Estado para todos los campos del formulario
   const [reporte, setReporte] = useState({
     zona: '',
     turno: 'DÍA',
     fecha: formatDate(new Date()),
     elementoEntrega: '',
     elementoRecibe: '',
-    observaciones: Array(10).fill(''),
-    consignas: Array(5).fill(''),
-    proyeccion: Array(7).fill({ servicio: '', faltas: '', cubre: '' }),
+    observaciones: [{ 
+      id: Date.now(), 
+      texto: '',
+      hora: formatTime(new Date()) 
+    }],
+    consignas: [{ 
+      id: Date.now(), 
+      texto: '',
+      hora: formatTime(new Date()) 
+    }],
+    proyeccion: [{ id: Date.now(), servicio: '', faltas: '', cubre: '' }],
   });
 
   function formatDate(date) {
@@ -41,6 +54,123 @@ const ReporteSupervisorScreen = ({ route }) => {
     const year = date.getFullYear();
     return `${day}/${month}/${year}`;
   }
+
+  function formatTime(date) {
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+  }
+
+  // Funciones para manejar el cambio de hora
+  const handleTimeChange = (type, id, event, selectedTime) => {
+    setShowTimePicker(prev => ({ ...prev, [type]: null }));
+    
+    if (selectedTime) {
+      const timeString = formatTime(selectedTime);
+      
+      if (type === 'observaciones') {
+        setReporte(prev => ({
+          ...prev,
+          observaciones: prev.observaciones.map(obs => 
+            obs.id === id ? { ...obs, hora: timeString } : obs
+          )
+        }));
+      } else if (type === 'consignas') {
+        setReporte(prev => ({
+          ...prev,
+          consignas: prev.consignas.map(consigna => 
+            consigna.id === id ? { ...consigna, hora: timeString } : consigna
+          )
+        }));
+      }
+    }
+  };
+
+  // Funciones para Observaciones
+  const agregarObservacion = () => {
+    setReporte(prev => ({
+      ...prev,
+      observaciones: [...prev.observaciones, { 
+        id: Date.now(), 
+        texto: '',
+        hora: formatTime(new Date())
+      }]
+    }));
+  };
+
+  const eliminarObservacion = (id) => {
+    if (reporte.observaciones.length > 1) {
+      setReporte(prev => ({
+        ...prev,
+        observaciones: prev.observaciones.filter(obs => obs.id !== id)
+      }));
+    }
+  };
+
+  const handleObservacionChange = (id, texto) => {
+    setReporte(prev => ({
+      ...prev,
+      observaciones: prev.observaciones.map(obs => 
+        obs.id === id ? { ...obs, texto } : obs
+      )
+    }));
+  };
+
+  // Funciones para Consignas
+  const agregarConsigna = () => {
+    setReporte(prev => ({
+      ...prev,
+      consignas: [...prev.consignas, { 
+        id: Date.now(), 
+        texto: '',
+        hora: formatTime(new Date())
+      }]
+    }));
+  };
+
+  const eliminarConsigna = (id) => {
+    if (reporte.consignas.length > 1) {
+      setReporte(prev => ({
+        ...prev,
+        consignas: prev.consignas.filter(consigna => consigna.id !== id)
+      }));
+    }
+  };
+
+  const handleConsignaChange = (id, texto) => {
+    setReporte(prev => ({
+      ...prev,
+      consignas: prev.consignas.map(consigna => 
+        consigna.id === id ? { ...consigna, texto } : consigna
+      )
+    }));
+  };
+
+  // Funciones para Proyección
+  const agregarProyeccion = () => {
+    setReporte(prev => ({
+      ...prev,
+      proyeccion: [...prev.proyeccion, { id: Date.now(), servicio: '', faltas: '', cubre: '' }]
+    }));
+  };
+
+  const eliminarProyeccion = (id) => {
+    if (reporte.proyeccion.length > 1) {
+      setReporte(prev => ({
+        ...prev,
+        proyeccion: prev.proyeccion.filter(proy => proy.id !== id)
+      }));
+    }
+  };
+
+  const handleProyeccionChange = (id, field, value) => {
+    setReporte(prev => ({
+      ...prev,
+      proyeccion: prev.proyeccion.map(proy => 
+        proy.id === id ? { ...proy, [field]: value } : proy
+      )
+    }));
+  };
 
   const handleDateChange = (event, selectedDate) => {
     setShowDatePicker(false);
@@ -54,24 +184,6 @@ const ReporteSupervisorScreen = ({ route }) => {
     setReporte(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleObservacionChange = (index, value) => {
-    const newObservaciones = [...reporte.observaciones];
-    newObservaciones[index] = value;
-    setReporte(prev => ({ ...prev, observaciones: newObservaciones }));
-  };
-
-  const handleConsignaChange = (index, value) => {
-    const newConsignas = [...reporte.consignas];
-    newConsignas[index] = value;
-    setReporte(prev => ({ ...prev, consignas: newConsignas }));
-  };
-
-  const handleProyeccionChange = (index, field, value) => {
-    const newProyeccion = [...reporte.proyeccion];
-    newProyeccion[index] = { ...newProyeccion[index], [field]: value };
-    setReporte(prev => ({ ...prev, proyeccion: newProyeccion }));
-  };
-
   const guardarReporte = async () => {
     if (!reporte.zona || !reporte.elementoEntrega || !reporte.elementoRecibe) {
       Alert.alert('Campos requeridos', 'Zona, elemento que entrega y elemento que recibe son obligatorios');
@@ -80,23 +192,48 @@ const ReporteSupervisorScreen = ({ route }) => {
 
     setLoading(true);
     try {
-      await addDoc(collection(db, 'reportesSupervisor'), {
+      // Preparar datos para Firestore (eliminar los ids)
+      const datosParaGuardar = {
         ...reporte,
+        observaciones: reporte.observaciones.map(obs => ({
+          texto: obs.texto,
+          hora: obs.hora
+        })),
+        consignas: reporte.consignas.map(consigna => ({
+          texto: consigna.texto,
+          hora: consigna.hora
+        })),
+        proyeccion: reporte.proyeccion.map(proy => ({
+          servicio: proy.servicio,
+          faltas: proy.faltas,
+          cubre: proy.cubre
+        })),
         supervisorId: numeroEmpleado,
         fechaCreacion: serverTimestamp(),
         tipo: 'diario'
-      });
+      };
+
+      await addDoc(collection(db, 'reportesSupervisor'), datosParaGuardar);
       Alert.alert('Éxito', 'Reporte diario guardado correctamente');
-      // Limpiar formulario después de guardar
+      
+      // Resetear el formulario
       setReporte({
         zona: '',
         turno: 'DÍA',
         fecha: formatDate(new Date()),
         elementoEntrega: '',
         elementoRecibe: '',
-        observaciones: Array(10).fill(''),
-        consignas: Array(5).fill(''),
-        proyeccion: Array(7).fill({ servicio: '', faltas: '', cubre: '' }),
+        observaciones: [{ 
+          id: Date.now(), 
+          texto: '',
+          hora: formatTime(new Date())
+        }],
+        consignas: [{ 
+          id: Date.now(), 
+          texto: '',
+          hora: formatTime(new Date())
+        }],
+        proyeccion: [{ id: Date.now(), servicio: '', faltas: '', cubre: '' }],
       });
     } catch (error) {
       console.error('Error al guardar reporte:', error);
@@ -107,215 +244,350 @@ const ReporteSupervisorScreen = ({ route }) => {
   };
 
   return (
-    <ScrollView 
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-    >
-      {/* Encabezado */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>REPORTE DIARIO</Text>
-        <Text style={styles.headerSubtitle}>Supervisor #{numeroEmpleado}</Text>
-      </View>
+     <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardAvoiding}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+          >
 
-      {/* Sección Zona/Turno/Fecha */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>INFORMACIÓN GENERAL</Text>
-        
-        <View style={styles.gridContainer}>
-          {/* Zona */}
-          <View style={styles.gridItem}>
-            <Text style={styles.inputLabel}>ZONA</Text>
-            <TextInput
-              style={styles.input}
-              value={reporte.zona}
-              onChangeText={(text) => handleInputChange('zona', text)}
-              placeholder="Ej: Zona Norte"
-            />
-          </View>
-
-          {/* Turno */}
-          <View style={styles.gridItem}>
-            <Text style={styles.inputLabel}>TURNO</Text>
-            <View style={styles.radioContainer}>
-              <Pressable 
-                style={[
-                  styles.radioButton, 
-                  reporte.turno === 'DÍA' && styles.radioButtonSelected
-                ]}
-                onPress={() => handleInputChange('turno', 'DÍA')}
-              >
-                <Text style={[
-                  styles.radioText,
-                  reporte.turno === 'DÍA' && styles.radioTextSelected
-                ]}>
-                  DÍA
-                </Text>
-              </Pressable>
-              <Pressable 
-                style={[
-                  styles.radioButton, 
-                  reporte.turno === 'NOCHE' && styles.radioButtonSelected
-                ]}
-                onPress={() => handleInputChange('turno', 'NOCHE')}
-              >
-                <Text style={[
-                  styles.radioText,
-                  reporte.turno === 'NOCHE' && styles.radioTextSelected
-                ]}>
-                  NOCHE
-                </Text>
-              </Pressable>
+          <ScrollView 
+            style={styles.container}
+            contentContainerStyle={styles.contentContainer}
+          >
+            {/* Encabezado */}
+            <View style={styles.headerContainer}>
+              <Text style={styles.header}>Reporte diario</Text>
+              <Text style={styles.subheader}></Text>
             </View>
-          </View>
-
-          {/* Fecha */}
-          <View style={styles.gridItem}>
-            <Text style={styles.inputLabel}>FECHA</Text>
-            <Pressable 
-              style={styles.dateInput}
-              onPress={() => setShowDatePicker(true)}
-            >
-              <Text style={styles.dateText}>{reporte.fecha}</Text>
-              <Ionicons name="calendar" size={20} color="#555" />
-            </Pressable>
-            {showDatePicker && (
-              <DateTimePicker
-                value={currentDate}
-                mode="date"
-                display="default"
-                onChange={handleDateChange}
-                locale="es-ES"
-              />
-            )}
-          </View>
-        </View>
-      </View>
-
-      {/* Sección Entrega/Recibe Turno */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>ENTREGA Y RECEPCIÓN DE TURNO</Text>
-        
-        <View style={styles.gridContainer}>
-          <View style={[styles.gridItem, { flex: 1 }]}>
-            <Text style={styles.inputLabel}>ELEMENTO QUE ENTREGA</Text>
-            <TextInput
-              style={styles.input}
-              value={reporte.elementoEntrega}
-              onChangeText={(text) => handleInputChange('elementoEntrega', text)}
-              placeholder="Nombre completo"
-            />
-          </View>
-          
-          <View style={[styles.gridItem, { flex: 1 }]}>
-            <Text style={styles.inputLabel}>ELEMENTO QUE RECIBE</Text>
-            <TextInput
-              style={styles.input}
-              value={reporte.elementoRecibe}
-              onChangeText={(text) => handleInputChange('elementoRecibe', text)}
-              placeholder="Nombre completo"
-            />
-          </View>
-        </View>
-      </View>
-
-      {/* Sección Observaciones */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>OBSERVACIONES Y NOVEDADES</Text>
-        
-        <View style={styles.observationsContainer}>
-          {reporte.observaciones.map((obs, index) => (
-            <View key={`obs-${index}`} style={styles.observationRow}>
-              <View style={styles.timeCell}>
-                <Text style={styles.timeLabel}>{`${index + 1}.`}</Text>
+            <View style={styles.profileHeader}>
+              <View style={styles.profileInfo}>
+                <Text style={styles.profileName}>Supervisor: {nombre}</Text>
+                <Text style={styles.profileBadge}>Empleado #{numeroEmpleado}</Text>
               </View>
-              <TextInput
-                style={styles.observationInput}
-                value={obs}
-                onChangeText={(text) => handleObservacionChange(index, text)}
-                placeholder={`Ingrese observación ${index + 1}`}
-                multiline
-              />
             </View>
-          ))}
-        </View>
-      </View>
 
-      {/* Sección Consignas */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>CONSIGNAS ESPECIALES</Text>
-        
-        {reporte.consignas.map((consigna, index) => (
-          <View key={`consigna-${index}`} style={styles.consignaContainer}>
-            <Text style={styles.consignaNumber}>{index + 1}.</Text>
-            <TextInput
-              style={styles.consignaInput}
-              value={consigna}
-              onChangeText={(text) => handleConsignaChange(index, text)}
-              placeholder={`Consigna ${index + 1}`}
-              multiline
-            />
-          </View>
-        ))}
-      </View>
+            {/* Sección Zona/Turno/Fecha */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>INFORMACIÓN GENERAL</Text>
+              
+              <View style={styles.gridContainer}>
+                {/* Zona */}
+                <View style={styles.gridItem}>
+                  <Text style={styles.inputLabel}>ZONA</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={reporte.zona}
+                    onChangeText={(text) => handleInputChange('zona', text)}
+                    placeholder="Ej: Zona Norte"
+                    placeholderTextColor="#999"
+                  />
+                </View>
+                {/* Fecha */}
+                <View style={styles.gridItem}>
+                  <Text style={styles.inputLabel}>FECHA</Text>
+                  <Pressable 
+                    style={styles.dateInput}
+                    onPress={() => setShowDatePicker(true)}
+                  >
+                    <Text style={styles.dateText}>{reporte.fecha}</Text>
+                    <Ionicons name="calendar" size={20} color="#555" />
+                  </Pressable>
+                  {showDatePicker && (
+                    <DateTimePicker
+                      value={currentDate}
+                      mode="date"
+                      display="default"
+                      onChange={handleDateChange}
+                      locale="es-ES"
+                    />
+                  )}
+                </View>
+                <View style={styles.gridItem2}>
+                  <Text style={styles.inputLabel}>TURNO</Text>
+                  <View style={styles.radioContainer}>
+                    <Pressable 
+                      style={[
+                        styles.radioButton, 
+                        reporte.turno === 'DÍA' && styles.radioButtonSelected
+                      ]}
+                      onPress={() => handleInputChange('turno', 'DÍA')}
+                    >
+                      <Text style={[
+                        styles.radioText,
+                        reporte.turno === 'DÍA' && styles.radioTextSelected
+                      ]}>
+                        DÍA
+                      </Text>
+                    </Pressable>
+                    <Pressable 
+                      style={[
+                        styles.radioButton, 
+                        reporte.turno === 'NOCHE' && styles.radioButtonSelected
+                      ]}
+                      onPress={() => handleInputChange('turno', 'NOCHE')}
+                    >
+                      <Text style={[
+                        styles.radioText,
+                        reporte.turno === 'NOCHE' && styles.radioTextSelected
+                      ]}>
+                        NOCHE
+                      </Text>
+                    </Pressable>
+                    <Pressable 
+                      style={[
+                        styles.radioButton, 
+                        reporte.turno === '24H' && styles.radioButtonSelected
+                      ]}
+                      onPress={() => handleInputChange('turno', '24H')}
+                    >
+                      <Text style={[
+                        styles.radioText,
+                        reporte.turno === '24H' && styles.radioTextSelected
+                      ]}>
+                        24H
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+            </View>
 
-      {/* Sección Proyección */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>PROYECCIÓN DE PERSONAL</Text>
-        
-        <View style={styles.projectionHeader}>
-          <Text style={styles.projectionHeaderCell}>SERVICIO</Text>
-          <Text style={styles.projectionHeaderCell}>AUSENCIAS</Text>
-          <Text style={styles.projectionHeaderCell}>CUBRE</Text>
-        </View>
-        
-        {reporte.proyeccion.map((item, index) => (
-          <View key={`proy-${index}`} style={styles.projectionRow}>
-            <TextInput
-              style={styles.projectionInput}
-              value={item.servicio}
-              onChangeText={(text) => handleProyeccionChange(index, 'servicio', text)}
-              placeholder={`Servicio ${index + 1}`}
-            />
-            <TextInput
-              style={styles.projectionInput}
-              value={item.faltas}
-              onChangeText={(text) => handleProyeccionChange(index, 'faltas', text)}
-              placeholder={`Ausencia ${index + 1}`}
-            />
-            <TextInput
-              style={styles.projectionInput}
-              value={item.cubre}
-              onChangeText={(text) => handleProyeccionChange(index, 'cubre', text)}
-              placeholder={`Cubre ${index + 1}`}
-            />
-          </View>
-        ))}
-      </View>
+            {/* Sección Entrega/Recibe Turno */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>ENTREGA Y RECEPCIÓN DE TURNO</Text>
+              
+              <View style={styles.entregaContainer}>
+                <View style={styles.entregaItem}>
+                  <Text style={styles.inputLabel}>ELEMENTO QUE ENTREGA</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={reporte.elementoEntrega}
+                    onChangeText={(text) => handleInputChange('elementoEntrega', text)}
+                    placeholder="Nombre completo"
+                    placeholderTextColor="#999"
+                  />
+                </View>
+                
+                <View style={styles.entregaItem}>
+                  <Text style={styles.inputLabel}>ELEMENTO QUE RECIBE</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={reporte.elementoRecibe}
+                    onChangeText={(text) => handleInputChange('elementoRecibe', text)}
+                    placeholder="Nombre completo"
+                    placeholderTextColor="#999"
+                  />
+                </View>
+              </View>
+            </View>
 
-      {/* Botón de guardar */}
-      <Pressable 
-        style={({ pressed }) => [
-          styles.saveButton,
-          pressed && styles.saveButtonPressed,
-          loading && styles.saveButtonDisabled
-        ]}
-        onPress={guardarReporte}
-        disabled={loading}
-      >
-        {loading ? (
-          <ActivityIndicator color="#fff" size="small" />
-        ) : (
-          <>
-            <Ionicons name="save" size={20} color="#fff" style={styles.saveIcon} />
-            <Text style={styles.saveButtonText}>GUARDAR REPORTE</Text>
-          </>
-        )}
-      </Pressable>
-    </ScrollView>
+            {/* Sección Observaciones */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>OBSERVACIONES Y NOVEDADES</Text>
+              <Text style={styles.observacionesSubtitle}>Registre las principales observaciones del turno:</Text>
+              
+              {reporte.observaciones.map((obs) => (
+                <View key={`obs-${obs.id}`} style={styles.observacionCard}>
+                  <View style={styles.observacionHeader}>
+                    <View style={styles.observacionTitleContainer}>
+                      <Text style={styles.observacionNumber}>Observación</Text>
+                      <Pressable 
+                        style={styles.timeButton}
+                        onPress={() => setShowTimePicker(prev => ({ ...prev, observaciones: obs.id }))}
+                      >
+                        <Ionicons name="time-outline" size={18} color="#1E3A8A" />
+                        <Text style={styles.timeText}>{obs.hora}</Text>
+                      </Pressable>
+                    </View>
+                    
+                    {reporte.observaciones.length > 1 && (
+                      <Pressable 
+                        style={styles.deleteButton}
+                        onPress={() => eliminarObservacion(obs.id)}
+                      >
+                        <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                      </Pressable>
+                    )}
+                  </View>
+                  
+                  {showTimePicker.observaciones === obs.id && (
+                    <DateTimePicker
+                      value={new Date()}
+                      mode="time"
+                      display="default"
+                      onChange={(event, time) => handleTimeChange('observaciones', obs.id, event, time)}
+                    />
+                  )}
+                  
+                  <TextInput
+                    style={styles.multilineInput}
+                    value={obs.texto}
+                    onChangeText={(text) => handleObservacionChange(obs.id, text)}
+                    placeholder="Describa la observación"
+                    placeholderTextColor="#999"
+                    multiline
+                  />
+                </View>
+              ))}
+              
+              <Pressable 
+                style={styles.addButton}
+                onPress={agregarObservacion}
+              >
+                <Ionicons name="add-circle" size={22} color="#1E3A8A" />
+                <Text style={styles.addButtonText}>Agregar observación</Text>
+              </Pressable>
+            </View>
+
+            {/* Sección Consignas */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>CONSIGNAS ESPECIALES</Text>
+              <Text style={styles.consignasSubtitle}>Registre las consignas importantes para el siguiente turno:</Text>
+              
+              {reporte.consignas.map((consigna) => (
+                <View key={`consigna-${consigna.id}`} style={styles.consignaCard}>
+                  <View style={styles.consignaHeader}>
+                    <View style={styles.consignaTitleContainer}>
+                      <Text style={styles.consignaNumber}>Consigna</Text>
+                      <Pressable 
+                        style={styles.timeButton}
+                        onPress={() => setShowTimePicker(prev => ({ ...prev, consignas: consigna.id }))}
+                      >
+                        <Ionicons name="time-outline" size={18} color="#1E3A8A" />
+                        <Text style={styles.timeText}>{consigna.hora}</Text>
+                      </Pressable>
+                    </View>
+                    
+                    {reporte.consignas.length > 1 && (
+                      <Pressable 
+                        style={styles.deleteButton}
+                        onPress={() => eliminarConsigna(consigna.id)}
+                      >
+                        <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                      </Pressable>
+                    )}
+                  </View>
+                  
+                  {showTimePicker.consignas === consigna.id && (
+                    <DateTimePicker
+                      value={new Date()}
+                      mode="time"
+                      display="default"
+                      onChange={(event, time) => handleTimeChange('consignas', consigna.id, event, time)}
+                    />
+                  )}
+                  
+                  <TextInput
+                    style={styles.multilineInput}
+                    value={consigna.texto}
+                    onChangeText={(text) => handleConsignaChange(consigna.id, text)}
+                    placeholder="Describa la consigna"
+                    placeholderTextColor="#999"
+                    multiline
+                  />
+                </View>
+              ))}
+              
+              <Pressable 
+                style={styles.addButton}
+                onPress={agregarConsigna}
+              >
+                <Ionicons name="add-circle" size={22} color="#1E3A8A" />
+                <Text style={styles.addButtonText}>Agregar consigna</Text>
+              </Pressable>
+            </View>
+
+            {/* Sección Proyección de Personal */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>PROYECCIÓN DE PERSONAL</Text>
+              <Text style={styles.proyeccionSubtitle}>Registre la proyección de personal</Text>
+              
+              {reporte.proyeccion.map((item) => (
+                <View key={`proy-${item.id}`} style={styles.proyeccionCard}>
+                  <View style={styles.proyeccionHeader}>
+                    <Text style={styles.proyeccionNumber}>Registro</Text>
+                    {reporte.proyeccion.length > 1 && (
+                      <Pressable 
+                        style={styles.deleteButton}
+                        onPress={() => eliminarProyeccion(item.id)}
+                      >
+                        <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                      </Pressable>
+                    )}
+                  </View>
+                  
+                  <View style={styles.proyeccionInputGroup}>
+                    <Text style={styles.proyeccionLabel}>Servicio</Text>
+                    <TextInput
+                      style={styles.proyeccionInput}
+                      value={item.servicio}
+                      onChangeText={(text) => handleProyeccionChange(item.id, 'servicio', text)}
+                      placeholder="Nombre del servicio"
+                      placeholderTextColor="#999"
+                    />
+                  </View>
+                  
+                  <View style={styles.proyeccionInputGroup}>
+                    <Text style={styles.proyeccionLabel}>Ausencias</Text>
+                    <TextInput
+                      style={styles.proyeccionInput}
+                      value={item.faltas}
+                      onChangeText={(text) => handleProyeccionChange(item.id, 'faltas', text)}
+                      placeholder="Nombre de quien esta ausente"
+                      placeholderTextColor="#999"
+                    />
+                  </View>
+                  
+                  <View style={styles.proyeccionInputGroup}>
+                    <Text style={styles.proyeccionLabel}>Cubre</Text>
+                    <TextInput
+                      style={styles.proyeccionInput}
+                      value={item.cubre}
+                      onChangeText={(text) => handleProyeccionChange(item.id, 'cubre', text)}
+                      placeholder="Nombre de quien cubre"
+                      placeholderTextColor="#999"
+                    />
+                  </View>
+                </View>
+              ))}
+              
+              <Pressable 
+                style={styles.addButton}
+                onPress={agregarProyeccion}
+              >
+                <Ionicons name="add-circle" size={22} color="#1E3A8A" />
+                <Text style={styles.addButtonText}>Agregar otro registro</Text>
+              </Pressable>
+            </View>
+
+            {/* Botón de guardar */}
+            <Pressable 
+              style={({ pressed }) => [
+                styles.saveButton,
+                pressed && styles.saveButtonPressed,
+                loading && styles.saveButtonDisabled
+              ]}
+              onPress={guardarReporte}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Ionicons name="save" size={20} color="#fff" style={styles.saveIcon} />
+                  <Text style={styles.saveButtonText}>GUARDAR REPORTE</Text>
+                </>
+              )}
+            </Pressable>
+          </ScrollView>
+      </KeyboardAvoidingView>  
   );
 };
 
 const styles = StyleSheet.create({
+  keyboardAvoiding: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
@@ -324,28 +596,57 @@ const styles = StyleSheet.create({
     padding: 15,
     paddingBottom: 30,
   },
-  header: {
+  profileHeader: {
+    marginBottom: 25,
     backgroundColor: '#1E3A8A',
-    padding: 20,
-    borderRadius: 10,
-    marginBottom: 20,
+    padding: 15,
+    borderRadius: 15,
+    elevation: 5,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
   },
-  headerTitle: {
-    color: '#fff',
+  profileInfo: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFF',
+    marginBottom: 3,
+  },
+  profileBadge: {
+    fontSize: 14,
+    color: '#A0B9D9',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+    marginTop: 5,
+  },
+  formGroup: {
+    marginBottom: 15,
+  },
+  headerContainer: {
+    marginBottom: 10,
+  },
+  header: {
     fontSize: 22,
     fontWeight: 'bold',
     textAlign: 'center',
+    color: '#333',
   },
-  headerSubtitle: {
-    color: '#E0E7FF',
+  subheader: {
     fontSize: 16,
-    textAlign: 'center',
-    marginTop: 5,
+    textAlign: 'left',
+    color: '#555',
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
   },
   card: {
     backgroundColor: '#fff',
@@ -377,6 +678,10 @@ const styles = StyleSheet.create({
     width: width > 500 ? '30%' : '48%',
     marginBottom: 15,
   },
+  gridItem2: {
+    width: width > 500 ? '50%' : '78%',
+    marginBottom: 15,
+  },
   inputLabel: {
     color: '#4B5563',
     fontSize: 12,
@@ -394,7 +699,7 @@ const styles = StyleSheet.create({
   },
   radioContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'left',
     marginTop: 5,
   },
   radioButton: {
@@ -406,6 +711,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 5,
     backgroundColor: '#F3F4F6',
+    width: '30%',
   },
   radioButtonSelected: {
     backgroundColor: '#1E3A8A',
@@ -432,90 +738,157 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#111827',
   },
-  observationsContainer: {
+  entregaContainer: {
+    marginBottom: 5,
+  },
+  entregaItem: {
+    marginBottom: 15,
+  },
+  observacionCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    borderRadius: 8,
-    overflow: 'hidden',
+    padding: 15,
+    marginBottom: 15,
   },
-  observationRow: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+  consignaCard: {
     backgroundColor: '#F9FAFB',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    padding: 15,
+    marginBottom: 15,
   },
-  timeCell: {
-    width: 40,
-    justifyContent: 'center',
+  proyeccionCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    padding: 15,
+    marginBottom: 15,
+  },
+  observacionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#E5E7EB',
+    marginBottom: 12,
   },
-  timeLabel: {
-    color: '#4B5563',
-    fontWeight: 'bold',
-    fontSize: 12,
+  consignaHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
   },
-  observationInput: {
-    flex: 1,
-    minHeight: 50,
-    padding: 12,
-    fontSize: 14,
-    color: '#111827',
-    backgroundColor: '#fff',
+  proyeccionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
   },
-  consignaContainer: {
+  observacionTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+  },
+  consignaTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  observacionNumber: {
+    color: '#1E3A8A',
+    fontWeight: 'bold',
+    fontSize: 14,
   },
   consignaNumber: {
-    width: 25,
-    color: '#4B5563',
+    color: '#1E3A8A',
     fontWeight: 'bold',
     fontSize: 14,
   },
-  consignaInput: {
-    flex: 1,
-    minHeight: 50,
-    backgroundColor: '#F9FAFB',
+  proyeccionNumber: {
+    color: '#1E3A8A',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  deleteButton: {
+    padding: 5,
+  },
+  timeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 15,
+    padding: 5,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 5,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 14,
-    color: '#111827',
+    borderColor: '#DBEAFE',
   },
-  projectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 6,
-    padding: 8,
-  },
-  projectionHeaderCell: {
-    flex: 1,
-    textAlign: 'center',
+  timeText: {
+    color: '#1E3A8A',
     fontSize: 12,
-    fontWeight: 'bold',
-    color: '#4B5563',
+    marginLeft: 5,
   },
-  projectionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  projectionInput: {
-    flex: 1,
-    marginHorizontal: 3,
-    height: 45,
-    backgroundColor: '#F9FAFB',
+  multilineInput: {
+    backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#E5E7EB',
     borderRadius: 6,
     padding: 10,
-    fontSize: 12,
+    fontSize: 14,
     color: '#111827',
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  proyeccionInputGroup: {
+    marginBottom: 12,
+  },
+  proyeccionLabel: {
+    color: '#4B5563',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 5,
+  },
+  proyeccionInput: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 6,
+    padding: 10,
+    fontSize: 14,
+    color: '#111827',
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#1E3A8A',
+    borderRadius: 8,
+    backgroundColor: '#EFF6FF',
+    marginTop: 5,
+  },
+  addButtonText: {
+    color: '#1E3A8A',
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  observacionesSubtitle: {
+    color: '#4B5563',
+    fontSize: 13,
+    marginBottom: 15,
+    fontStyle: 'italic',
+  },
+  consignasSubtitle: {
+    color: '#4B5563',
+    fontSize: 13,
+    marginBottom: 15,
+    fontStyle: 'italic',
+  },
+  proyeccionSubtitle: {
+    color: '#4B5563',
+    fontSize: 13,
+    marginBottom: 15,
+    fontStyle: 'italic',
   },
   saveButton: {
     flexDirection: 'row',

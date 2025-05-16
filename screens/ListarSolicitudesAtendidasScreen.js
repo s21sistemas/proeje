@@ -1,31 +1,40 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity, Alert, Image, ScrollView } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { db } from "../database/firebaseConfig";
+import * as ImagePicker from 'expo-image-picker';
+import { db, storage } from "../database/firebaseConfig";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { MaterialIcons } from '@expo/vector-icons';
 
 export default function ListarSolicitudesAtendidasScreen({ route }) {
-  const { nombre, numeroEmpleado } = route.params;
+  const { nombre, numeroEmpleado, datosCompletos } = route.params;
   const [facing, setFacing] = useState('back');
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [qrData, setQrData] = useState(null);
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(false);
+  const [image, setImage] = useState(null);
+  const [cameraPermission, requestCameraPermission] = ImagePicker.useCameraPermissions();
 
-  if (!permission) {
+  if (!permission || !cameraPermission) {
     return <View />;
   }
 
   if (!permission.granted) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.permissionText}>Necesitamos permiso para acceder a la cámara</Text>
-        <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
-          <Text style={styles.permissionButtonText}>Conceder Permiso</Text>
-        </TouchableOpacity>
-      </View>
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.container}>
+            <Text style={styles.permissionText}>Necesitamos permiso para acceder a la cámara</Text>
+            <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
+              <Text style={styles.permissionButtonText}>Conceder Permiso</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </SafeAreaProvider>
     );
   }
 
@@ -48,107 +57,250 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
     setScanned(false);
     setQrData(null);
     setComment('');
+    setImage(null);
+  };
+
+  const takePicture = async () => {
+    if (!cameraPermission.granted) {
+      await requestCameraPermission();
+    }
+
+    let result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.7,
+    });
+
+    if (!result.canceled) {
+      setImage(result.assets[0].uri);
+    }
+  };
+
+  const uploadImage = async (uri) => {
+    const blob = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.onload = function() {
+        resolve(xhr.response);
+      };
+      xhr.onerror = function() {
+        reject(new TypeError('Network request failed'));
+      };
+      xhr.responseType = 'blob';
+      xhr.open('GET', uri, true);
+      xhr.send(null);
+    });
+
+    const storageRef = ref(storage, `evidencias/${Date.now()}`);
+    await uploadBytes(storageRef, blob);
+    blob.close();
+
+    return await getDownloadURL(storageRef);
   };
 
   const saveToFirebase = async () => {
-    if (!qrData) {
-      Alert.alert("Error", "Primero escanea un código QR");
-      return;
+  if (!qrData) {
+    Alert.alert("Error", "Primero escanea un código QR");
+    return;
+  }
+
+  setLoading(true);
+  try {
+    let imageUrl = null;
+    if (image) {
+      imageUrl = await uploadImage(image); // Asumo que esta función sube la imagen a algún storage
     }
 
-    setLoading(true);
-    try {
-      await addDoc(collection(db, "RoutesQR"), {
-        numero: qrData,
-        comentario: comment,
-        numero_empleado: numeroEmpleado,
-        nombre: nombre,
-        fecha: serverTimestamp()
-      });
-      Alert.alert("Éxito", "Datos guardados correctamente");
-      resetScanner();
-    } catch (error) {
-      console.error("Error guardando datos: ", error);
-      Alert.alert("Error", "No se pudieron guardar los datos");
-    } finally {
-      setLoading(false);
+        // Opción 1: Si también quieres guardar en Firestore (opcional)
+    
+    await addDoc(collection(db, "RoutesQR"), {
+      numero: qrData,
+      comentario: comment,
+      numero_empleado: datosCompletos.id,
+      nombre: nombre,
+      fecha: serverTimestamp(),
+      evidenciaUrl: imageUrl
+    });
+
+    // Datos para el endpoint
+    const requestData = {
+      guardia_id: datosCompletos.id, // Asumo que numeroEmpleado es el ID del guardia
+      uuid: qrData, // El código QR escaneado
+      observaciones: comment,
+      foto: imageUrl
+    };
+
+    // Opción 1: Solo enviar al endpoint externo
+    const response = await fetch('https://admin.grupoproeje.com.mx/api/recorridos-guardia', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestData)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
-  };
+
+    const result = await response.json();
+    console.log("Respuesta del servidor:", result);
+
+
+  
+
+    Alert.alert("Listo", "Punto registrado correctamente, recuerda completar la ruta");
+    resetScanner();
+  } catch (error) {
+    console.error("Error al guardar datos:", error);
+    Alert.alert("Error", "No se pudieron guardar los datos");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Escáner de Rutas</Text>
-      
-      {!scanned ? (
-        <View style={styles.cameraContainer}>
-          <CameraView
-            style={styles.camera}
-            facing={facing}
-            barcodeScannerSettings={{
-              barcodeTypes: ["qr"],
-            }}
-            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-          />
-          <View style={styles.scanFrame} />
-          <Text style={styles.scanText}>Escanea el código QR de la ruta</Text>
-        </View>
-      ) : (
-        <View style={styles.scannedDataContainer}>
-          <Text style={styles.scannedDataTitle}>Datos escaneados:</Text>
-          <Text style={styles.scannedData}>{qrData}</Text>
-          
-          <Text style={styles.commentLabel}>Comentarios:</Text>
-          <TextInput
-            style={styles.commentInput}
-            multiline
-            numberOfLines={4}
-            placeholder="Agrega cualquier comentario relevante..."
-            value={comment}
-            onChangeText={setComment}
-          />
-          
-          <View style={styles.buttonGroup}>
-            <TouchableOpacity 
-              style={[styles.button, styles.cancelButton]} 
-              onPress={resetScanner}
-              disabled={loading}
-            >
-              <MaterialIcons name="cancel" size={20} color="white" />
-              <Text style={styles.buttonText}>Cancelar</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.button, styles.saveButton]} 
-              onPress={saveToFirebase}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <>
-                  <MaterialIcons name="save" size={20} color="white" />
-                  <Text style={styles.buttonText}>Guardar</Text>
-                </>
-              )}
-            </TouchableOpacity>
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.scrollContainer}>
+          <View style={styles.container}>
+            <View style={styles.profileHeader}>
+              <View style={styles.profileInfo}>
+                <Text style={styles.profileName}>{nombre}</Text>
+                <Text style={styles.profileBadge}>Empleado #{numeroEmpleado}</Text>
+              </View>
+            </View>
+            {!scanned ? (
+              <View style={styles.cameraContainer}>
+                <CameraView
+                  style={styles.camera}
+                  facing={facing}
+                  barcodeScannerSettings={{
+                    barcodeTypes: ["qr"],
+                  }}
+                  onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+                />
+                <View style={styles.scanFrame} />
+                <Text style={styles.scanText}>Escanea el código QR de la ruta</Text>
+              </View>
+            ) : (
+              <View style={styles.scannedDataContainer}>
+                <Text style={styles.scannedDataTitle}>Datos escaneados:</Text>
+                <Text style={styles.scannedData}>{qrData}</Text>
+                
+                <Text style={styles.commentLabel}>Comentarios:</Text>
+                <TextInput
+                  style={styles.commentInput}
+                  multiline
+                  numberOfLines={4}
+                  placeholder="Agrega cualquier comentario relevante..."
+                  value={comment}
+                  onChangeText={setComment}
+                />
+
+                {image && (
+                  <View style={styles.imageContainer}>
+                    <Image source={{ uri: image }} style={styles.image} />
+                    <TouchableOpacity 
+                      style={styles.removeImageButton} 
+                      onPress={() => setImage(null)}
+                    >
+                      <MaterialIcons name="delete" size={20} color="white" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <TouchableOpacity 
+                  style={styles.photoButton} 
+                  onPress={takePicture}
+                  disabled={loading}
+                >
+                  <MaterialIcons name="add-a-photo" size={20} color="white" />
+                  <Text style={styles.buttonText}>
+                    {image ? 'Cambiar foto de evidencia' : 'Tomar foto de evidencia'}
+                  </Text>
+                </TouchableOpacity>
+                
+                <View style={styles.buttonGroup}>
+                  <TouchableOpacity 
+                    style={[styles.button, styles.cancelButton]} 
+                    onPress={resetScanner}
+                    disabled={loading}
+                  >
+                    <MaterialIcons name="cancel" size={20} color="white" />
+                    <Text style={styles.buttonText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[styles.button, styles.saveButton]} 
+                    onPress={saveToFirebase}
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <ActivityIndicator color="white" />
+                    ) : (
+                      <>
+                        <MaterialIcons name="save" size={20} color="white" />
+                        <Text style={styles.buttonText}>Guardar</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
           </View>
-        </View>
-      )}
-    </View>
+        </ScrollView>
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+  },
+  scrollContainer: {
+    flexGrow: 1,
+  },
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: '#f8f9fa',
+  },
+  profileHeader: {
+    backgroundColor: '#0A1E3D',
+    padding: 15,
+    borderRadius: 15,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    marginBottom: 20,
+
+  },
+  profileInfo: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFF',
+    marginBottom: 3,
+  },
+  profileBadge: {
+    fontSize: 14,
+    color: '#A0B9D9',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginVertical: 20,
+    marginBottom: 20,
     color: '#2c3e50',
   },
   permissionText: {
@@ -228,6 +380,35 @@ const styles = StyleSheet.create({
     minHeight: 100,
     textAlignVertical: 'top',
     backgroundColor: 'white',
+  },
+  photoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1E4A8D',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 20,
+  },
+  imageContainer: {
+    position: 'relative',
+    marginBottom: 20,
+  },
+  image: {
+    width: '100%',
+    height: 200,
+    borderRadius: 10,
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: '#e74c3c',
+    borderRadius: 20,
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonGroup: {
     flexDirection: 'row',

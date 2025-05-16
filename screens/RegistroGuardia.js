@@ -17,12 +17,9 @@ import { collection, addDoc } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import ViewShot from 'react-native-view-shot';
 import * as MediaLibrary from 'expo-media-library';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation } from '@react-navigation/native';
 
-
-export default function CheckGuardias({ route }) {
-  const { nombre, numeroEmpleado } = route.params;
+export default function RegistroGuardia({ route }) {
+  const { nombre, numeroEmpleado, ordenServicio } = route.params;
   const [comentarios, setComentarios] = useState("");
   const [foto, setFoto] = useState("");
   const [fotoConMarca, setFotoConMarca] = useState("");
@@ -35,8 +32,10 @@ export default function CheckGuardias({ route }) {
   const [hasLocationPermission, setHasLocationPermission] = useState(null);
   const [hasMediaPermission, setHasMediaPermission] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [idServicio, setIdServicio] = useState(ordenServicio?.id || "");
+  const [nombreGuardia, setNombreGuardia] = useState("");
+  const [fotoGaleria, setFotoGaleria] = useState("");
   const viewShotRef = useRef(null);
-  const navigation = useNavigation();
 
   useEffect(() => {
     (async () => {
@@ -51,14 +50,23 @@ export default function CheckGuardias({ route }) {
     })();
   }, []);
 
-  const handleLogout = async () => {
+  const seleccionarFotoGaleria = async () => {
     try {
       setLoading(true);
-      await AsyncStorage.removeItem('userData');
-      navigation.replace('Login');
+      let result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets.length > 0) {
+        setFotoGaleria(result.assets[0].uri);
+        setFoto(""); // Limpiar foto de cámara si existe
+      }
     } catch (error) {
-      console.error('Error al cerrar sesión:', error);
-      Alert.alert('Error', 'No se pudo cerrar la sesión');
+      console.error("Error al seleccionar foto:", error);
+      Alert.alert("Error", "No se pudo seleccionar la foto");
     } finally {
       setLoading(false);
     }
@@ -91,6 +99,7 @@ export default function CheckGuardias({ route }) {
 
       if (!result.canceled && result.assets.length > 0) {
         setFoto(result.assets[0].uri);
+        setFotoGaleria(""); // Limpiar foto de galería si existe
       } else {
         Alert.alert('Error', 'No se pudo capturar la foto.');
       }
@@ -104,7 +113,7 @@ export default function CheckGuardias({ route }) {
 
   const capturarConMarcaAgua = async () => {
     if (!foto) {
-      Alert.alert('Error', 'Primero debes tomar una foto');
+      Alert.alert('Error', 'Primero debes tomar una foto con la cámara');
       return;
     }
 
@@ -113,6 +122,7 @@ export default function CheckGuardias({ route }) {
       const uri = await viewShotRef.current.capture();
       setFotoConMarca(uri);
       
+      // Guardar la imagen en el album (opcional)
       if (hasMediaPermission) {
         await MediaLibrary.saveToLibraryAsync(uri);
       }
@@ -179,19 +189,22 @@ export default function CheckGuardias({ route }) {
       return;
     }
 
-    if (!fotoConMarca) {
-      Alert.alert("Error", "Debes generar la foto con marca de agua primero");
+    if (!fotoConMarca && !fotoGaleria) {
+      Alert.alert("Error", "Debes generar la foto con marca de agua o seleccionar una foto");
       return;
     }
 
     setLoading(true);
 
     try {
-      let imageURL = await uploadImageToFirebase(fotoConMarca);
+      let imageURL = fotoConMarca 
+        ? await uploadImageToFirebase(fotoConMarca) 
+        : await uploadImageToFirebase(fotoGaleria);
 
       const checkData = {
-        nombre,
+        nombre: nombreGuardia,
         numeroEmpleado,
+        idServicio,
         tipo: tipoCheck,
         ubicacion: direccion || "Ubicación no disponible",
         coordenadas: ubicacion,
@@ -200,7 +213,8 @@ export default function CheckGuardias({ route }) {
         comentarios: comentarios,
         foto: imageURL,
         fecha: new Date().toISOString(),
-        estado: "Pendiente"
+        tipo:"Eventual",
+        ordenServicio: ordenServicio || null
       };
 
       await addDoc(collection(db, "guardias_check"), checkData);
@@ -211,6 +225,7 @@ export default function CheckGuardias({ route }) {
       setComentarios("");
       setFoto("");
       setFotoConMarca("");
+      setFotoGaleria("");
       setUbicacion(null);
       setDireccion("");
       setHora("");
@@ -226,24 +241,44 @@ export default function CheckGuardias({ route }) {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+    <View style={styles.headerContainer}>
+        <Text style={styles.header}>Check para guardia eventual</Text>
+        <Text style={styles.subheader}></Text>
+      
+      </View>
       <View style={styles.profileHeader}>
         <View style={styles.profileInfo}>
-          <Text style={styles.profileName}>{nombre}</Text>
+          <Text style={styles.profileName}>Supervisor: {nombre}</Text>
           <Text style={styles.profileBadge}>Empleado #{numeroEmpleado}</Text>
+          {idServicio && (
+            <Text style={styles.profileBadge}>Servicio #{idServicio}</Text>
+          )}
         </View>
-        
-        <Pressable 
-          onPress={handleLogout}
-          style={styles.logoutButton}
-          disabled={loading}
-        >
-          <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
-        </Pressable>
+     </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>Nombre del Guardia:</Text>
+        <TextInput
+          style={styles.input}
+          value={nombreGuardia}
+          onChangeText={setNombreGuardia}
+          editable={!loading}
+        />
       </View>
 
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>ID de Servicio:</Text>
+        <TextInput
+          style={styles.input}
+          value={idServicio}
+          onChangeText={setIdServicio}
+          editable={!loading}
+          placeholder="Ingrese el ID del servicio"
+        />
+      </View>
       <View style={styles.headerContainer}>
-        <Text style={styles.header}>Registro de servicio</Text>
-        <Text style={styles.subheader}>Selecciona tu tipo de check</Text>
+        <Text style={styles.label}>Selecciona el tipo de check:</Text>
+      
       </View>
 
       <View style={styles.buttonContainer}>
@@ -274,14 +309,24 @@ export default function CheckGuardias({ route }) {
         </View>
       )}
 
-      <Pressable 
-        onPress={tomarFoto} 
-        style={styles.button}
-        disabled={loading}
-      >
-        <Text style={styles.buttonText}>Tomar foto de evidencia</Text>
-      </Pressable>
-      
+      <View style={styles.photoButtonsContainer}>
+        <Pressable 
+          style={[styles.button, styles.photoButton]}
+          onPress={seleccionarFotoGaleria}
+          disabled={loading}
+        >
+          <Text style={styles.buttonText}>Seleccionar foto</Text>
+        </Pressable>
+        
+        <Pressable 
+          onPress={tomarFoto} 
+          style={[styles.button, styles.photoButton]}
+          disabled={loading}
+        >
+          <Text style={styles.buttonText}>Tomar foto</Text>
+        </Pressable>
+      </View>
+
       {foto && (
         <View style={styles.imageContainer}>
           <ViewShot 
@@ -292,7 +337,8 @@ export default function CheckGuardias({ route }) {
             <Image source={{ uri: foto }} style={styles.image} />
             <View style={styles.watermarkContainer}>
               <Text style={styles.watermarkText}>{fechaHora}</Text>
-              <Text style={styles.watermarkText}>{nombre} - {numeroEmpleado}</Text>
+              <Text style={styles.watermarkText}>{nombreGuardia} - {numeroEmpleado}</Text>
+              <Text style={styles.watermarkText}>Servicio #{idServicio}</Text>
             </View>
           </ViewShot>
           
@@ -303,6 +349,17 @@ export default function CheckGuardias({ route }) {
           >
             <Text style={styles.buttonText}>Confirmar foto</Text>
           </Pressable>
+        </View>
+      )}
+
+      {fotoGaleria && !foto && (
+        <View style={styles.imageContainer}>
+          <Image source={{ uri: fotoGaleria }} style={styles.image} />
+          <View style={styles.infoContainer}>
+            <Text style={styles.infoText}>Foto seleccionada de galería</Text>
+            <Text style={styles.infoText}>{nombreGuardia} - {numeroEmpleado}</Text>
+            <Text style={styles.infoText}>Servicio #{idServicio}</Text>
+          </View>
         </View>
       )}
 
@@ -318,9 +375,9 @@ export default function CheckGuardias({ route }) {
       />
 
       <Pressable 
-        style={[styles.submitButton, (loading || !fotoConMarca) && styles.disabledButton]} 
+        style={[styles.submitButton, (loading || (!fotoConMarca && !fotoGaleria)) && styles.disabledButton]} 
         onPress={enviarCheck} 
-        disabled={loading || !fotoConMarca || !tipoCheck}
+        disabled={loading || (!fotoConMarca && !fotoGaleria) || !tipoCheck}
       >
         <Text style={styles.buttonText}>Enviar Registro</Text>
       </Pressable>
@@ -336,7 +393,7 @@ const styles = StyleSheet.create({
   },
   profileHeader: {
     marginBottom: 25,
-    backgroundColor: '#0A1E3D',
+    backgroundColor: '#1E3A8A',
     padding: 15,
     borderRadius: 15,
     elevation: 5,
@@ -344,9 +401,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.3,
     shadowRadius: 5,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
   },
   profileInfo: {
     flex: 1,
@@ -365,21 +419,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 10,
     alignSelf: 'flex-start',
+    marginTop: 5,
   },
-  logoutButton: {
-    backgroundColor: '#d9534f',
-    borderRadius: 20,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginLeft: 10,
-  },
-  logoutButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
+  formGroup: {
+    marginBottom: 15,
   },
   headerContainer: {
-    marginBottom: 20,
+    marginBottom: 10,
   },
   header: {
     fontSize: 22,
@@ -389,13 +435,18 @@ const styles = StyleSheet.create({
   },
   subheader: {
     fontSize: 16,
-    textAlign: 'center',
+    textAlign: 'left',
     color: '#555',
   },
   buttonContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 20,
+  },
+  photoButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 15,
   },
   checkButton: {
     flex: 1,
@@ -404,6 +455,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 5,
+  },
+  photoButton: {
+    flex: 1,
+    borderRadius: 25,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 5,
+    marginHorizontal: 5,
+    backgroundColor: '#1E3A8A',
   },
   checkInButton: {
     backgroundColor: '#4CAF50',
@@ -474,12 +535,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
   },
-  successText: {
-    color: '#4CAF50',
-    textAlign: 'center',
-    marginTop: 5,
-    fontWeight: 'bold',
-  },
   label: {
     fontSize: 16,
     fontWeight: '600',
@@ -505,7 +560,7 @@ const styles = StyleSheet.create({
   infoContainer: {
     backgroundColor: '#fff',
     borderRadius: 8,
-    padding: 15,
+    padding: 10,
     marginBottom: 15,
     borderColor: '#ddd',
     borderWidth: 1,
