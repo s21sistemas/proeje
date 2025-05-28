@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -10,7 +10,7 @@ import {
   Alert,
   Dimensions,
   Platform,
-  KeyboardAvoidingView,
+  KeyboardAvoidingView, SafeAreaView
 } from 'react-native';
 import { db } from '../database/firebaseConfig';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -20,7 +20,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 const { width } = Dimensions.get('window');
 
 const ReporteSupervisorScreen = ({ route }) => {
-  const { nombre, numeroEmpleado } = route.params;
+  const { nombre, numeroEmpleado, datosCompletos } = route.params;
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -28,7 +28,8 @@ const ReporteSupervisorScreen = ({ route }) => {
     observaciones: null,
     consignas: null
   });
-  
+  const [ordenServicioId, setOrdenServicioId] = useState(null);
+const [fetchingOrden, setFetchingOrden] = useState(true);
   const [reporte, setReporte] = useState({
     zona: '',
     turno: 'DÍA',
@@ -47,6 +48,37 @@ const ReporteSupervisorScreen = ({ route }) => {
     }],
     proyeccion: [{ id: Date.now(), servicio: '', faltas: '', cubre: '' }],
   });
+
+      //obtención del id de la orden de servicio
+      useEffect(() => {
+        const fetchOrdenServicio = async () => {
+          try {
+            const response = await fetch(`https://admin.grupoproeje.com.mx/api/orden-servicio-app?guardia_id=${datosCompletos.id}`);
+            const result = await response.json();
+            
+            console.log('Respuesta de la API de órdenes:', result);
+    
+            if (response.ok) {
+              const ordenesData = Array.isArray(result) ? result : [result];
+              const ordenActiva = ordenesData.find(orden => orden && !orden.eliminado);
+              if (ordenActiva) {
+                setOrdenServicioId(ordenActiva.id);
+              } else {
+                Alert.alert('Error', 'No se encontró una orden de servicio activa');
+              }
+            } else {
+              Alert.alert('Error', result.message || 'Error al cargar las órdenes de servicio');
+            }
+          } catch (err) {
+            console.error('Error al obtener órdenes:', err);
+            Alert.alert('Error', 'Error de conexión al servidor');
+          } finally {
+            setFetchingOrden(false);
+          }
+        };
+    
+        fetchOrdenServicio();
+      }, [datosCompletos.id]);
 
   function formatDate(date) {
     const day = date.getDate().toString().padStart(2, '0');
@@ -185,65 +217,116 @@ const ReporteSupervisorScreen = ({ route }) => {
   };
 
   const guardarReporte = async () => {
-    if (!reporte.zona || !reporte.elementoEntrega || !reporte.elementoRecibe) {
-      Alert.alert('Campos requeridos', 'Zona, elemento que entrega y elemento que recibe son obligatorios');
-      return;
+  if (!reporte.zona || !reporte.elementoEntrega || !reporte.elementoRecibe) {
+    Alert.alert('Campos requeridos', 'Zona, elemento que entrega y elemento que recibe son obligatorios');
+    return;
+  }
+
+  setLoading(true);
+  try {
+    // Preparar datos para Firestore (eliminar los ids)
+    const datosParaGuardar = {
+      ...reporte,
+      observaciones: reporte.observaciones.map(obs => ({
+        texto: obs.texto,
+        hora: obs.hora
+      })),
+      consignas: reporte.consignas.map(consigna => ({
+        texto: consigna.texto,
+        hora: consigna.hora
+      })),
+      proyeccion: reporte.proyeccion.map(proy => ({
+        servicio: proy.servicio,
+        faltas: proy.faltas,
+        cubre: proy.cubre
+      })),
+      supervisorId: numeroEmpleado,
+      fechaCreacion: serverTimestamp(),
+      tipo: 'diario'
+    };
+
+    // Guardar en Firestore
+   // await addDoc(collection(db, 'reportesSupervisor'), datosParaGuardar);
+    
+    // Preparar datos para la API externa
+    const apiData = {
+      guardia_id: datosCompletos.id, // ID del guardia/supervisor
+      orden_servicio_id: ordenServicioId, // ID de la orden de servicio obtenido del useEffect
+      zona: reporte.zona,
+      turno: reporte.turno,
+      quien_entrega: reporte.elementoEntrega,
+      quien_recibe: reporte.elementoRecibe,
+      observaciones: reporte.observaciones.map(obs => ({
+        texto: obs.texto,
+        hora: obs.hora
+      })),
+      consignas: reporte.consignas.map(consigna => ({
+        texto: consigna.texto,
+        hora: consigna.hora
+      })),
+      proyeccion: reporte.proyeccion.map(proy => ({
+        cubre: proy.cubre,
+        faltas: proy.faltas,
+        servicio: proy.servicio
+      })),
+      tipo: 'Reporte diario supervisor' // Puedes personalizar este valor
+    };
+
+    console.log("Datos para API:", apiData);
+
+    // Enviar a la API externa
+    const apiResponse = await fetch('https://admin.grupoproeje.com.mx/api/reporte-supervisor', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(apiData)
+    });
+
+    const responseData = await apiResponse.json();
+    console.log("Respuesta del servidor:", responseData);
+
+    if (!apiResponse.ok) {
+      throw new Error(responseData.message || 'Error al enviar a la API externa');
     }
 
-    setLoading(true);
-    try {
-      // Preparar datos para Firestore (eliminar los ids)
-      const datosParaGuardar = {
-        ...reporte,
-        observaciones: reporte.observaciones.map(obs => ({
-          texto: obs.texto,
-          hora: obs.hora
-        })),
-        consignas: reporte.consignas.map(consigna => ({
-          texto: consigna.texto,
-          hora: consigna.hora
-        })),
-        proyeccion: reporte.proyeccion.map(proy => ({
-          servicio: proy.servicio,
-          faltas: proy.faltas,
-          cubre: proy.cubre
-        })),
-        supervisorId: numeroEmpleado,
-        fechaCreacion: serverTimestamp(),
-        tipo: 'diario'
-      };
-
-      await addDoc(collection(db, 'reportesSupervisor'), datosParaGuardar);
-      Alert.alert('Éxito', 'Reporte diario guardado correctamente');
-      
-      // Resetear el formulario
-      setReporte({
-        zona: '',
-        turno: 'DÍA',
-        fecha: formatDate(new Date()),
-        elementoEntrega: '',
-        elementoRecibe: '',
-        observaciones: [{ 
-          id: Date.now(), 
-          texto: '',
-          hora: formatTime(new Date())
-        }],
-        consignas: [{ 
-          id: Date.now(), 
-          texto: '',
-          hora: formatTime(new Date())
-        }],
-        proyeccion: [{ id: Date.now(), servicio: '', faltas: '', cubre: '' }],
-      });
-    } catch (error) {
-      console.error('Error al guardar reporte:', error);
-      Alert.alert('Error', 'No se pudo guardar el reporte');
-    } finally {
-      setLoading(false);
-    }
-  };
+    Alert.alert('Éxito', 'Reporte guardado correctamente');
+    
+    // Resetear el formulario
+    setReporte({
+      zona: '',
+      turno: 'DÍA',
+      fecha: formatDate(new Date()),
+      elementoEntrega: '',
+      elementoRecibe: '',
+      observaciones: [{ 
+        id: Date.now(), 
+        texto: '',
+        hora: formatTime(new Date())
+      }],
+      consignas: [{ 
+        id: Date.now(), 
+        texto: '',
+        hora: formatTime(new Date())
+      }],
+      proyeccion: [{ id: Date.now(), servicio: '', faltas: '', cubre: '' }],
+    });
+  } catch (error) {
+    console.error('Error al guardar reporte:', error);
+    Alert.alert(
+      'Aviso', 
+      error.message.includes('API externa') 
+        ? 'El reporte no se guardó en el servidor' 
+        : 'No se pudo guardar el reporte'
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
+    <SafeAreaView style={styles.safeArea}>
      <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.keyboardAvoiding}
@@ -308,13 +391,13 @@ const ReporteSupervisorScreen = ({ route }) => {
                     <Pressable 
                       style={[
                         styles.radioButton, 
-                        reporte.turno === 'DÍA' && styles.radioButtonSelected
+                        reporte.turno === 'DIA' && styles.radioButtonSelected
                       ]}
-                      onPress={() => handleInputChange('turno', 'DÍA')}
+                      onPress={() => handleInputChange('turno', 'DIA')}
                     >
                       <Text style={[
                         styles.radioText,
-                        reporte.turno === 'DÍA' && styles.radioTextSelected
+                        reporte.turno === 'DIA' && styles.radioTextSelected
                       ]}>
                         DÍA
                       </Text>
@@ -581,10 +664,15 @@ const ReporteSupervisorScreen = ({ route }) => {
             </Pressable>
           </ScrollView>
       </KeyboardAvoidingView>  
+      </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+   safeArea: {
+    flex: 1,
+    backgroundColor: '#0A1E3D',
+  },
   keyboardAvoiding: {
     flex: 1,
   },

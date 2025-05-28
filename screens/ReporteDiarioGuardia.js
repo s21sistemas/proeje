@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -20,7 +20,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 const { width } = Dimensions.get('window');
 
 const ReporteDiarioGuardia = ({ route }) => {
-  const { nombre, numeroEmpleado } = route.params;
+  const { nombre, numeroEmpleado, datosCompletos } = route.params;
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -28,6 +28,8 @@ const ReporteDiarioGuardia = ({ route }) => {
     observaciones: null,
     consignas: null
   });
+  const [ordenServicioId, setOrdenServicioId] = useState(null);
+  const [fetchingOrden, setFetchingOrden] = useState(true);
   
   const [reportData, setReportData] = useState({
     puntoVigilancia: '',
@@ -59,6 +61,36 @@ const ReporteDiarioGuardia = ({ route }) => {
     supervisor: ''
   });
 
+  useEffect(() => {
+    const fetchOrdenServicio = async () => {
+      try {
+        const response = await fetch(`https://admin.grupoproeje.com.mx/api/orden-servicio-app?guardia_id=${datosCompletos.id}`);
+        const result = await response.json();
+        
+        console.log('Respuesta de la API de órdenes:', result);
+
+        if (response.ok) {
+          const ordenesData = Array.isArray(result) ? result : [result];
+          const ordenActiva = ordenesData.find(orden => orden && !orden.eliminado);
+          if (ordenActiva) {
+            setOrdenServicioId(ordenActiva.id);
+          } else {
+            Alert.alert('Error', 'No se encontró una orden de servicio activa');
+          }
+        } else {
+          Alert.alert('Error', result.message || 'Error al cargar las órdenes de servicio');
+        }
+      } catch (err) {
+        console.error('Error al obtener órdenes:', err);
+        Alert.alert('Error', 'Error de conexión al servidor');
+      } finally {
+        setFetchingOrden(false);
+      }
+    };
+
+    fetchOrdenServicio();
+  }, [datosCompletos.id]);
+
   function formatDate(date) {
     const day = date.getDate().toString().padStart(2, '0');
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
@@ -72,7 +104,6 @@ const ReporteDiarioGuardia = ({ route }) => {
     return `${hours}:${minutes}`;
   }
 
-  // Funciones para manejar el cambio de hora
   const handleTimeChange = (type, id, event, selectedTime) => {
     setShowTimePicker(prev => ({ ...prev, [type]: null }));
     
@@ -97,7 +128,6 @@ const ReporteDiarioGuardia = ({ route }) => {
     }
   };
 
-  // Funciones para Observaciones
   const agregarObservacion = () => {
     setReportData(prev => ({
       ...prev,
@@ -127,7 +157,6 @@ const ReporteDiarioGuardia = ({ route }) => {
     }));
   };
 
-  // Funciones para Consignas
   const agregarConsigna = () => {
     setReportData(prev => ({
       ...prev,
@@ -186,6 +215,11 @@ const ReporteDiarioGuardia = ({ route }) => {
         return;
       }
 
+      if (!ordenServicioId) {
+        Alert.alert('Error', 'No se pudo obtener la orden de servicio asociada');
+        return;
+      }
+
       setLoading(true);
       
       const datosParaGuardar = {
@@ -201,13 +235,63 @@ const ReporteDiarioGuardia = ({ route }) => {
         empleadoId: numeroEmpleado,
         nombreEmpleado: nombre,
         fechaCreacion: serverTimestamp(),
-        tipo: 'diario'
+        tipo: 'diario',
+        ordenServicioId: ordenServicioId
       };
 
-      await addDoc(collection(db, 'reportesGuardia'), datosParaGuardar);
-      Alert.alert('Éxito', 'Reporte diario guardado correctamente');
+      //await addDoc(collection(db, 'reportesGuardia'), datosParaGuardar);
       
-      // Resetear el formulario
+      const apiData = {
+        guardia_id: datosCompletos.id,
+        orden_servicio_id: ordenServicioId,
+        punto_vigilancia: reportData.puntoVigilancia,
+        turno: reportData.turno,
+        quien_recibe: reportData.elementoRecibe,
+        consignas: reportData.consignas.map(consigna => ({
+          texto: consigna.texto,
+          hora: consigna.hora
+        })),
+        observaciones: reportData.observaciones.map(obs => ({
+          texto: obs.texto,
+          hora: obs.hora
+        })),
+        equipo: {
+          baston: reportData.equipo.baston,
+          celular: reportData.equipo.celular,
+          chaleco: reportData.equipo.chaleco,
+          esposas: reportData.equipo.esposas,
+          fornitura: reportData.equipo.fornitura,
+          gas: reportData.equipo.gas,
+          impermeable: reportData.equipo.impermeable,
+          linterna: reportData.equipo.linterna,
+          radio: reportData.equipo.radio
+        }
+      };
+
+      const apiResponse = await fetch('https://admin.grupoproeje.com.mx/api/reporte-guardia', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(apiData)
+      });
+
+      const contentType = apiResponse.headers.get('content-type');
+      let responseData;
+
+      if (contentType?.includes('application/json')) {
+        responseData = await apiResponse.json();
+      } else {
+        const textResponse = await apiResponse.text();
+        console.warn('Respuesta no JSON:', textResponse);
+        throw new Error(`El servidor respondió con: ${textResponse.substring(0, 100)}...`);
+      }
+
+      console.log("Respuesta del servidor:", responseData);
+      
+      Alert.alert('Éxito', 'Reporte enviado correctamente');
+      
       setReportData({
         puntoVigilancia: '',
         turno: 'DIA',
@@ -239,11 +323,37 @@ const ReporteDiarioGuardia = ({ route }) => {
       });
     } catch (error) {
       console.error('Error saving report:', error);
-      Alert.alert('Error', 'No se pudo guardar el reporte');
+      Alert.alert('Error', 'No se pudo guardar el reporte: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
+
+  if (fetchingOrden) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#1E3A8A" />
+        <Text style={styles.loadingText}>Cargando información de la orden de servicio...</Text>
+      </View>
+    );
+  }
+
+  if (!ordenServicioId) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.errorText}>No se pudo obtener la orden de servicio</Text>
+        <Pressable 
+          style={styles.retryButton}
+          onPress={() => {
+            setFetchingOrden(true);
+            setOrdenServicioId(null);
+          }}
+        >
+          <Text style={styles.retryButtonText}>Reintentar</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -876,6 +986,33 @@ const styles = StyleSheet.create({
   },
   saveIcon: {
     marginRight: 8,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 20,
+    color: '#1E3A8A',
+    fontSize: 16,
+  },
+  errorText: {
+    color: '#dc2626',
+    fontSize: 16,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#1E3A8A',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 10,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
 });
 

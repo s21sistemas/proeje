@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Switch, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Switch, SafeAreaView, Platform,KeyboardAvoidingView } from 'react-native';
 import { db  } from "../database/firebaseConfig";
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { collection, query, where, getDocs, doc, addDoc, serverTimestamp, setDoc } from 'firebase/firestore';
@@ -263,170 +263,177 @@ const BitacoraForm = ({ navigation, route }) => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView style={styles.container}>
-        <Text style={styles.title}>Nueva Bitácora de Supervisión</Text>
+      <SafeAreaView style={styles.safeArea}>
+        <KeyboardAvoidingView
+             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+             style={styles.keyboardAvoiding}
+             keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+           >
 
-        {/* Sección de información general */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Información General</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Servicio"
-            value={formData.servicio}
-            onChangeText={(text) => handleChange('servicio', text)}
-          />
-          
-          <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.input}>
-            <Text>Fecha: {formData.fecha.toLocaleDateString()}</Text>
-          </TouchableOpacity>
-          
-          {showDatePicker && (
-            <DateTimePicker
-              value={formData.fecha}
-              mode="date"
-              display="default"
-              onChange={(event, selectedDate) => {
-                setShowDatePicker(false);
-                if (selectedDate) {
-                  handleChange('fecha', selectedDate);
-                }
-              }}
-            />
-          )}
+              <ScrollView style={styles.container}>
+              <Text style={styles.title}>Nueva Bitácora de Supervisión</Text>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Zona"
-            value={formData.zona}
-            onChangeText={(text) => handleChange('zona', text)}
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Patrulla"
-            value={formData.patrulla}
-            onChangeText={(text) => handleChange('patrulla', text)}
-          />
-
-          <TouchableOpacity onPress={() => setShowHoraInicioPicker(true)} style={styles.input}>
-            <Text>Hora de inicio de recorrido: {formatTime(formData.horaInicioRecorrido)}</Text>
-          </TouchableOpacity>
-          
-          {showHoraInicioPicker && (
-            <DateTimePicker
-              value={formData.horaInicioRecorrido}
-              mode="time"
-              display="default"
-              onChange={(event, selectedTime) => {
-                setShowHoraInicioPicker(false);
-                if (selectedTime) {
-                  handleChange('horaInicioRecorrido', selectedTime);
-                }
-              }}
-            />
-          )}
-
-          <TouchableOpacity onPress={() => setShowHoraFinPicker(true)} style={styles.input}>
-            <Text>Hora de fin de recorrido: {formatTime(formData.horaFinRecorrido)}</Text>
-          </TouchableOpacity>
-          
-          {showHoraFinPicker && (
-            <DateTimePicker
-              value={formData.horaFinRecorrido}
-              mode="time"
-              display="default"
-              onChange={(event, selectedTime) => {
-                setShowHoraFinPicker(false);
-                if (selectedTime) {
-                  handleChange('horaFinRecorrido', selectedTime);
-                }
-              }}
-            />
-          )}
-
-          <TextInput
-            style={styles.input}
-            placeholder="Kilometraje"
-            value={formData.kilometraje}
-            onChangeText={(text) => handleChange('kilometraje', text)}
-            keyboardType="numeric"
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Litros de carga"
-            value={formData.litrosCarga}
-            onChangeText={(text) => handleChange('litrosCarga', text)}
-            keyboardType="numeric"
-          />
-        </View>
-
-        {/* Sección de guardias y checklist */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Checklist de Guardias</Text>
-          
-          {formData.guardias.map((guardia, index) => (
-            <View key={index} style={styles.guardiaContainer}>
-              <Text style={styles.guardiaTitle}>Guardia {index + 1}</Text>
-              
-              <View style={styles.searchContainer}>
+              {/* Sección de información general */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Información General</Text>
                 <TextInput
-                  style={[styles.input, styles.empleadoInput]}
-                  placeholder="Número de empleado"
-                  value={guardia.numeroEmpleado}
-                  onChangeText={(text) => handleGuardiaChange(index, 'numeroEmpleado', text)}
-                  
+                  style={styles.input}
+                  placeholder="Servicio"
+                  value={formData.servicio}
+                  onChangeText={(text) => handleChange('servicio', text)}
                 />
-                <TouchableOpacity 
-                  style={styles.searchButton}
-                  onPress={() => buscarGuardia(index)}
-                >
-                  <Text style={styles.searchButtonText}>Buscar</Text>
+                
+                <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.input}>
+                  <Text>Fecha: {formData.fecha.toLocaleDateString()}</Text>
                 </TouchableOpacity>
-              </View>
-              
-              <TextInput
-                style={styles.input}
-                placeholder="Nombre del guardia"
-                value={guardia.nombre}
-                onChangeText={(text) => handleGuardiaChange(index, 'nombre', text)}
-                editable={false}
-              />
-              
-              <Text style={styles.checklistTitle}>Checklist:</Text>
-              {Object.entries(guardia.checkItems).map(([key, value]) => (
-                <View key={key} style={styles.checkItem}>
-                  <Text style={styles.checkLabel}>
-                    {key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1')}
-                  </Text>
-                  <Switch
-                    value={value}
-                    onValueChange={(val) => handleCheckChange(index, key, val)}
+                
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={formData.fecha}
+                    mode="date"
+                    display="default"
+                    onChange={(event, selectedDate) => {
+                      setShowDatePicker(false);
+                      if (selectedDate) {
+                        handleChange('fecha', selectedDate);
+                      }
+                    }}
                   />
-                </View>
-              ))}
-              
-              {formData.guardias.length > 1 && (
-                <TouchableOpacity 
-                  style={styles.removeButton}
-                  onPress={() => removeGuardia(index)}
-                >
-                  <Text style={styles.removeButtonText}>Eliminar Guardia</Text>
+                )}
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Zona"
+                  value={formData.zona}
+                  onChangeText={(text) => handleChange('zona', text)}
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Patrulla"
+                  value={formData.patrulla}
+                  onChangeText={(text) => handleChange('patrulla', text)}
+                />
+
+                <TouchableOpacity onPress={() => setShowHoraInicioPicker(true)} style={styles.input}>
+                  <Text>Hora de inicio de recorrido: {formatTime(formData.horaInicioRecorrido)}</Text>
                 </TouchableOpacity>
-              )}
-            </View>
-          ))}
-          
-          <TouchableOpacity style={styles.addButton} onPress={addGuardia}>
-            <Text style={styles.addButtonText}>Agregar Otro Guardia</Text>
-          </TouchableOpacity>
-        </View> 
-          <TouchableOpacity style={styles.saveButton} onPress={saveBitacora}>
-            <Text style={styles.saveButtonText}>Guardar Bitácora</Text>
-          </TouchableOpacity>
-      </ScrollView>
-    </SafeAreaView>
+                
+                {showHoraInicioPicker && (
+                  <DateTimePicker
+                    value={formData.horaInicioRecorrido}
+                    mode="time"
+                    display="default"
+                    onChange={(event, selectedTime) => {
+                      setShowHoraInicioPicker(false);
+                      if (selectedTime) {
+                        handleChange('horaInicioRecorrido', selectedTime);
+                      }
+                    }}
+                  />
+                )}
+
+                <TouchableOpacity onPress={() => setShowHoraFinPicker(true)} style={styles.input}>
+                  <Text>Hora de fin de recorrido: {formatTime(formData.horaFinRecorrido)}</Text>
+                </TouchableOpacity>
+                
+                {showHoraFinPicker && (
+                  <DateTimePicker
+                    value={formData.horaFinRecorrido}
+                    mode="time"
+                    display="default"
+                    onChange={(event, selectedTime) => {
+                      setShowHoraFinPicker(false);
+                      if (selectedTime) {
+                        handleChange('horaFinRecorrido', selectedTime);
+                      }
+                    }}
+                  />
+                )}
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Kilometraje"
+                  value={formData.kilometraje}
+                  onChangeText={(text) => handleChange('kilometraje', text)}
+                  keyboardType="numeric"
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Litros de carga"
+                  value={formData.litrosCarga}
+                  onChangeText={(text) => handleChange('litrosCarga', text)}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              {/* Sección de guardias y checklist */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Checklist de Guardias</Text>
+                
+                {formData.guardias.map((guardia, index) => (
+                  <View key={index} style={styles.guardiaContainer}>
+                    <Text style={styles.guardiaTitle}>Guardia {index + 1}</Text>
+                    
+                    <View style={styles.searchContainer}>
+                      <TextInput
+                        style={[styles.input, styles.empleadoInput]}
+                        placeholder="Número de empleado"
+                        value={guardia.numeroEmpleado}
+                        onChangeText={(text) => handleGuardiaChange(index, 'numeroEmpleado', text)}
+                        
+                      />
+                      <TouchableOpacity 
+                        style={styles.searchButton}
+                        onPress={() => buscarGuardia(index)}
+                      >
+                        <Text style={styles.searchButtonText}>Buscar</Text>
+                      </TouchableOpacity>
+                    </View>
+                    
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Nombre del guardia"
+                      value={guardia.nombre}
+                      onChangeText={(text) => handleGuardiaChange(index, 'nombre', text)}
+                      editable={false}
+                    />
+                    
+                    <Text style={styles.checklistTitle}>Checklist:</Text>
+                    {Object.entries(guardia.checkItems).map(([key, value]) => (
+                      <View key={key} style={styles.checkItem}>
+                        <Text style={styles.checkLabel}>
+                          {key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1')}
+                        </Text>
+                        <Switch
+                          value={value}
+                          onValueChange={(val) => handleCheckChange(index, key, val)}
+                        />
+                      </View>
+                    ))}
+                    
+                    {formData.guardias.length > 1 && (
+                      <TouchableOpacity 
+                        style={styles.removeButton}
+                        onPress={() => removeGuardia(index)}
+                      >
+                        <Text style={styles.removeButtonText}>Eliminar Guardia</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+                
+                <TouchableOpacity style={styles.addButton} onPress={addGuardia}>
+                  <Text style={styles.addButtonText}>Agregar Otro Guardia</Text>
+                </TouchableOpacity>
+              </View> 
+                <TouchableOpacity style={styles.saveButton} onPress={saveBitacora}>
+                  <Text style={styles.saveButtonText}>Guardar Bitácora</Text>
+                </TouchableOpacity>
+              </ScrollView>
+          </KeyboardAvoidingView>
+      </SafeAreaView>
 
   );
 };
@@ -435,6 +442,9 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#0A1E3D',
+  },
+    keyboardAvoiding: {
+    flex: 1,
   },
   container: {
     flex: 1,

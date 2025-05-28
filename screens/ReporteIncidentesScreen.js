@@ -8,7 +8,7 @@ import {
   ScrollView, 
   StyleSheet, 
   Pressable, 
-  ActivityIndicator
+  ActivityIndicator, SafeAreaView, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -22,7 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 export default function ReporteIncidentesScreen({ route }) {
   // Parámetros de ruta con valores por defecto
-  const { nombre, numeroEmpleado } = route.params;
+  const { nombre, numeroEmpleado, datosCompletos } = route.params;
 
   // Estados del formulario
   const [incidente, setIncidente] = useState("");
@@ -43,6 +43,8 @@ export default function ReporteIncidentesScreen({ route }) {
   const [permisosListos, setPermisosListos] = useState(false);
   const [direccionCompleta, setDireccionCompleta] = useState("");
   const viewShotRef = useRef(null);
+  const [ordenServicioId, setOrdenServicioId] = useState(null);
+  const [fetchingOrden, setFetchingOrden] = useState(true);
 
   // Tipos de incidentes predefinidos
   const tiposIncidentes = [
@@ -55,7 +57,7 @@ export default function ReporteIncidentesScreen({ route }) {
     "Fuga de agua",
     "Otro"
   ];
-
+  //validación de permisos
   useEffect(() => {
     const verificarPermisos = async () => {
       try {
@@ -109,6 +111,36 @@ export default function ReporteIncidentesScreen({ route }) {
 
     verificarPermisos();
   }, []);
+    //obtención del id de la orden de servicio
+    useEffect(() => {
+      const fetchOrdenServicio = async () => {
+        try {
+          const response = await fetch(`https://admin.grupoproeje.com.mx/api/orden-servicio-app?guardia_id=${datosCompletos.id}`);
+          const result = await response.json();
+          
+          console.log('Respuesta de la API de órdenes:', result);
+  
+          if (response.ok) {
+            const ordenesData = Array.isArray(result) ? result : [result];
+            const ordenActiva = ordenesData.find(orden => orden && !orden.eliminado);
+            if (ordenActiva) {
+              setOrdenServicioId(ordenActiva.id);
+            } else {
+              Alert.alert('Error', 'No se encontró una orden de servicio activa');
+            }
+          } else {
+            Alert.alert('Error', result.message || 'Error al cargar las órdenes de servicio');
+          }
+        } catch (err) {
+          console.error('Error al obtener órdenes:', err);
+          Alert.alert('Error', 'Error de conexión al servidor');
+        } finally {
+          setFetchingOrden(false);
+        }
+      };
+  
+      fetchOrdenServicio();
+    }, [datosCompletos.id]);
 
   const obtenerDireccionCompleta = async () => {
     try {
@@ -214,65 +246,109 @@ export default function ReporteIncidentesScreen({ route }) {
   };
 
   const enviarReporte = async () => {
-    if (!incidente || !descripcion || !ubicacionIncidente) {
-      Alert.alert("Error", "Complete los campos obligatorios");
-      return;
+  if (!incidente || !descripcion || !ubicacionIncidente) {
+    Alert.alert("Error", "Complete los campos obligatorios");
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    // Subir imágenes en paralelo
+    const fotosUrls = await Promise.all(
+      fotosConMarca.map(uploadImageToFirebase)
+    ).then(results => results.filter(url => url !== null));
+
+    // Datos para Firestore
+    const reporteData = {
+      folio: `INC-${Date.now()}`,
+      nombre,
+      numeroEmpleado,
+      puntoVigilancia,
+      turno,
+      hora,
+      fecha: new Date().toISOString(),
+      fechaHora,
+      incidente,
+      descripcion,
+      ubicacionIncidente,
+      direccionCompleta,
+      causa,
+      personaReporta,
+      accionesTomadas,
+      recomendaciones,
+      fotos: fotosUrls,
+      ubicacion,
+      estado: "Pendiente",
+      timestamp: new Date().getTime(),
+      ordenServicioId // Asegúrate de que este estado esté definido
+    };
+
+    // Guardar en Firestore
+   // await addDoc(collection(db, "reportesIncidentes"), reporteData);
+    
+    // Datos para el API externo
+    const apiData = {
+      guardia_id: datosCompletos.id, // ID del guardia
+      orden_servicio_id: ordenServicioId, // ID de la orden de servicio
+      punto_vigilancia: puntoVigilancia,
+      turno: turno,
+      incidente: incidente,
+      descripcion: descripcion,
+      ubicacion: direccionCompleta || ubicacionIncidente,
+      causa: causa,
+      quien_reporta: personaReporta || nombre, // Usa el nombre del guardia si no hay persona que reporta
+      acciones: accionesTomadas,
+      recomendaciones: recomendaciones,
+      lugar_incidente: ubicacionIncidente,
+      foto: fotosUrls[0] || "" // Tomamos la primera foto si existe
+    };
+
+    console.log("Datos para API:", apiData);
+
+    // Enviar al API externo
+    const apiResponse = await fetch('https://admin.grupoproeje.com.mx/api/reporte-incidente-guardia', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(apiData)
+    });
+
+    const responseData = await apiResponse.json();
+    console.log("Respuesta del servidor:", responseData);
+
+    if (!apiResponse.ok) {
+      throw new Error(responseData.message || 'Error al enviar a la API externa');
     }
 
-    setLoading(true);
-
-    try {
-      // Subir imágenes en paralelo
-      const fotosUrls = await Promise.all(
-        fotosConMarca.map(uploadImageToFirebase)
-      ).then(results => results.filter(url => url !== null));
-
-      const reporteData = {
-        folio: `INC-${Date.now()}`,
-        nombre,
-        numeroEmpleado,
-        puntoVigilancia,
-        turno,
-        hora,
-        fecha: new Date().toISOString(),
-        fechaHora,
-        incidente,
-        descripcion,
-        ubicacionIncidente,
-        direccionCompleta,
-        causa,
-        personaReporta,
-        accionesTomadas,
-        recomendaciones,
-        fotos: fotosUrls,
-        ubicacion,
-        estado: "Pendiente",
-        timestamp: new Date().getTime()
-      };
-
-      await addDoc(collection(db, "reportesIncidentes"), reporteData);
-      
-      Alert.alert("Éxito", "Reporte guardado correctamente");
-      
-      // Resetear formulario
-      setIncidente("");
-      setDescripcion("");
-      setUbicacionIncidente("");
-      setDireccionCompleta("");
-      setFotos([]);
-      setFotosConMarca([]);
-      setCausa("");
-      setPersonaReporta("");
-      setAccionesTomadas("");
-      setRecomendaciones("");
-      
-    } catch (error) {
-      console.error("Error guardando reporte:", error);
-      Alert.alert("Error", "No se pudo guardar el reporte");
-    } finally {
-      setLoading(false);
-    }
-  };
+    Alert.alert("Éxito", "Reporte guardado correctamente");
+    
+    // Resetear formulario
+    setIncidente("");
+    setDescripcion("");
+    setUbicacionIncidente("");
+    setDireccionCompleta("");
+    setFotos([]);
+    setFotosConMarca([]);
+    setCausa("");
+    setPersonaReporta("");
+    setAccionesTomadas("");
+    setRecomendaciones("");
+    
+  } catch (error) {
+    console.error("Error guardando reporte:", error);
+    Alert.alert(
+      "Aviso", 
+      error.message.includes('API externa') 
+        ? "El reporte no se guardó en el servidor" 
+        : "No se pudo guardar el reporte"
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
   if (!permisosListos) {
     return (
@@ -284,197 +360,212 @@ export default function ReporteIncidentesScreen({ route }) {
   }
 
   return (
-    <ScrollView 
-      contentContainerStyle={styles.container}
-      keyboardShouldPersistTaps="handled"
-    >
+    <SafeAreaView style={styles.safeArea}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardAvoiding}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+          >
+            <ScrollView 
+              contentContainerStyle={styles.container}
+              keyboardShouldPersistTaps="handled"
+            >
 
-      {/* Encabezado */}
-      <View style={styles.profileHeader}>
-                   <View style={styles.profileInfo}>
-                     <Text style={styles.profileName}>{nombre}</Text>
-                     <Text style={styles.profileBadge}>Empleado #{numeroEmpleado}</Text>
-                   </View>
-                 </View>
+              {/* Encabezado */}
+              <View style={styles.profileHeader}>
+                          <View style={styles.profileInfo}>
+                            <Text style={styles.profileName}>{nombre}</Text>
+                            <Text style={styles.profileBadge}>Empleado #{numeroEmpleado}</Text>
+                          </View>
+                        </View>
 
-      {loading && <ActivityIndicator size="large" color="#009BFF" style={styles.fullScreenLoader} />}
+              {loading && <ActivityIndicator size="large" color="#009BFF" style={styles.fullScreenLoader} />}
 
-      {/* Campos del formulario */}
-      <Text style={styles.label}>Punto de Vigilancia *</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Ej: Almacén principal"
-        value={puntoVigilancia}
-        onChangeText={setPuntoVigilancia}
-        editable={!loading}
-      />
+              {/* Campos del formulario */}
+              <Text style={styles.label}>Punto de Vigilancia *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Ej: Almacén principal"
+                value={puntoVigilancia}
+                onChangeText={setPuntoVigilancia}
+                editable={!loading}
+              />
 
-      <Text style={styles.label}>Turno *</Text>
-      <View style={styles.pickerContainer}>
-        <Picker
-          selectedValue={turno}
-          onValueChange={setTurno}
-          style={styles.picker}
-          enabled={!loading}
-        >
-          <Picker.Item label="DÍA" value="DÍA" />
-          <Picker.Item label="NOCHE" value="NOCHE" />
-          <Picker.Item label="24H" value="24H" />
-        </Picker>
-      </View>
+              <Text style={styles.label}>Turno *</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={turno}
+                  onValueChange={setTurno}
+                  style={styles.picker}
+                  enabled={!loading}
+                >
+                  <Picker.Item label="DÍA" value="DÍA" />
+                  <Picker.Item label="NOCHE" value="NOCHE" />
+                  <Picker.Item label="24H" value="24H" />
+                </Picker>
+              </View>
 
-      <Text style={styles.label}>Tipo de Incidente *</Text>
-      <View style={styles.pickerContainer}>
-        <Picker
-          selectedValue={incidente}
-          onValueChange={setIncidente}
-          style={styles.picker}
-          enabled={!loading}
-        >
-          <Picker.Item label="Seleccione un tipo..." value="" />
-          {tiposIncidentes.map((tipo, index) => (
-            <Picker.Item key={index} label={tipo} value={tipo} />
-          ))}
-        </Picker>
-      </View>
+              <Text style={styles.label}>Tipo de Incidente *</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={incidente}
+                  onValueChange={setIncidente}
+                  style={styles.picker}
+                  enabled={!loading}
+                >
+                  <Picker.Item label="Seleccione un tipo..." value="" />
+                  {tiposIncidentes.map((tipo, index) => (
+                    <Picker.Item key={index} label={tipo} value={tipo} />
+                  ))}
+                </Picker>
+              </View>
 
-      <Text style={styles.label}>Descripción *</Text>
-      <TextInput
-        style={[styles.input, styles.textArea]}
-        placeholder="Describa en detalle lo ocurrido..."
-        value={descripcion}
-        onChangeText={setDescripcion}
-        multiline
-        numberOfLines={4}
-        editable={!loading}
-      />
+              <Text style={styles.label}>Descripción *</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                placeholder="Describa en detalle lo ocurrido..."
+                value={descripcion}
+                onChangeText={setDescripcion}
+                multiline
+                numberOfLines={4}
+                editable={!loading}
+              />
 
-      <Text style={styles.label}>Ubicación exacta *</Text>
-      
-      <Pressable 
-        style={[styles.button, styles.locationButton]}
-        onPress={obtenerDireccionCompleta}
-        disabled={loading}
-      >
-        <Ionicons name="location" size={20} color="white" />
-        <Text style={styles.buttonText}> Obtener ubicación actual</Text>
-      </Pressable>
-      
-      <TextInput
-        style={styles.input}
-        placeholder="Ej: Patio de almacenamiento, sector B"
-        value={ubicacionIncidente}
-        onChangeText={setUbicacionIncidente}
-        editable={!loading}
-      />
-
-      <Text style={styles.label}>Causa probable</Text>
-      <TextInput
-        style={[styles.input, styles.textArea]}
-        placeholder="Describa la posible causa del incidente"
-        value={causa}
-        onChangeText={setCausa}
-        multiline
-        numberOfLines={3}
-        editable={!loading}
-      />
-
-      <Text style={styles.label}>Persona que reportó</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Nombre de quien reportó"
-        value={personaReporta}
-        onChangeText={setPersonaReporta}
-        editable={!loading}
-      />
-
-      <Text style={styles.label}>Acciones tomadas</Text>
-      <TextInput
-        style={[styles.input, styles.textArea]}
-        placeholder="Describa las acciones realizadas"
-        value={accionesTomadas}
-        onChangeText={setAccionesTomadas}
-        multiline
-        numberOfLines={3}
-        editable={!loading}
-      />
-
-      <Text style={styles.label}>Recomendaciones</Text>
-      <TextInput
-        style={[styles.input, styles.textArea]}
-        placeholder="Describa recomendaciones para evitar futuros incidentes"
-        value={recomendaciones}
-        onChangeText={setRecomendaciones}
-        multiline
-        numberOfLines={4}
-        editable={!loading}
-      />
-
-      <Text style={styles.label}>Evidencia fotográfica</Text>
-      <Pressable 
-        style={styles.button}
-        onPress={tomarFoto}
-        disabled={loading}
-      >
-        <Ionicons name="camera" size={20} color="white" />
-        <Text style={styles.buttonText}> Tomar foto</Text>
-      </Pressable>
-
-      {fotos.length > 0 && (
-        <View style={styles.photosContainer}>
-          {fotos.map((fotoUri, index) => (
-            <View key={index} style={styles.photoItem}>
-              <ViewShot
-                ref={viewShotRef}
-                options={{ format: 'jpg', quality: 0.9 }}
-                style={styles.viewShot}
-              >
-                <Image source={{ uri: fotoUri }} style={styles.image} />
-                <View style={styles.watermarkContainer}>
-                  <Text style={styles.watermarkText}>{fechaHora}</Text>
-                  <Text style={styles.watermarkText}>{nombre} - #{numeroEmpleado}</Text>
-                  <Text style={styles.watermarkText}>{puntoVigilancia} - {turno}</Text>
-                </View>
-              </ViewShot>
+              <Text style={styles.label}>Ubicación exacta *</Text>
               
-              <Pressable
-                style={[styles.button, styles.secondaryButton]}
-                onPress={() => capturarConMarcaAgua(fotoUri)}
+              <Pressable 
+                style={[styles.button, styles.locationButton]}
+                onPress={obtenerDireccionCompleta}
                 disabled={loading}
               >
-                <Text style={styles.buttonText}>Confirmar foto</Text>
+                <Ionicons name="location" size={20} color="white" />
+                <Text style={styles.buttonText}> Obtener ubicación actual</Text>
               </Pressable>
-            </View>
-          ))}
-        </View>
-      )}
+              
+              <TextInput
+                style={styles.input}
+                placeholder="Ej: Patio de almacenamiento, sector B"
+                value={ubicacionIncidente}
+                onChangeText={setUbicacionIncidente}
+                editable={!loading}
+              />
 
-      <View style={styles.infoContainer}>
-        <Text style={styles.infoText}>Hora del reporte: {hora || 'No registrada'}</Text>
-        {direccionCompleta && (
-          <Text style={styles.infoText}>Dirección: {direccionCompleta}</Text>
-        )}
-        {ubicacion && (
-          <Text style={styles.infoText}>
-            Coordenadas: {ubicacion.latitude.toFixed(4)}, {ubicacion.longitude.toFixed(4)}
-          </Text>
-        )}
-      </View>
+              <Text style={styles.label}>Causa probable</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                placeholder="Describa la posible causa del incidente"
+                value={causa}
+                onChangeText={setCausa}
+                multiline
+                numberOfLines={3}
+                editable={!loading}
+              />
 
-      <Pressable
-        style={[styles.submitButton, loading && styles.disabledButton]}
-        onPress={enviarReporte}
-        disabled={loading || !incidente || !descripcion || !ubicacionIncidente}
-      >
-        <Text style={styles.buttonText}>
-          {loading ? 'Enviando...' : 'Enviar Reporte'}
-        </Text>
-      </Pressable>
-    </ScrollView>
+              <Text style={styles.label}>Persona que reportó</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Nombre de quien reportó"
+                value={personaReporta}
+                onChangeText={setPersonaReporta}
+                editable={!loading}
+              />
+
+              <Text style={styles.label}>Acciones tomadas</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                placeholder="Describa las acciones realizadas"
+                value={accionesTomadas}
+                onChangeText={setAccionesTomadas}
+                multiline
+                numberOfLines={3}
+                editable={!loading}
+              />
+
+              <Text style={styles.label}>Recomendaciones</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                placeholder="Describa recomendaciones para evitar futuros incidentes"
+                value={recomendaciones}
+                onChangeText={setRecomendaciones}
+                multiline
+                numberOfLines={4}
+                editable={!loading}
+              />
+
+              <Text style={styles.label}>Evidencia fotográfica</Text>
+              <Pressable 
+                style={styles.button}
+                onPress={tomarFoto}
+                disabled={loading}
+              >
+                <Ionicons name="camera" size={20} color="white" />
+                <Text style={styles.buttonText}> Tomar foto</Text>
+              </Pressable>
+
+              {fotos.length > 0 && (
+                <View style={styles.photosContainer}>
+                  {fotos.map((fotoUri, index) => (
+                    <View key={index} style={styles.photoItem}>
+                      <ViewShot
+                        ref={viewShotRef}
+                        options={{ format: 'jpg', quality: 0.9 }}
+                        style={styles.viewShot}
+                      >
+                        <Image source={{ uri: fotoUri }} style={styles.image} />
+                        <View style={styles.watermarkContainer}>
+                          <Text style={styles.watermarkText}>{fechaHora}</Text>
+                          <Text style={styles.watermarkText}>{nombre} - #{numeroEmpleado}</Text>
+                          <Text style={styles.watermarkText}>{puntoVigilancia} - {turno}</Text>
+                        </View>
+                      </ViewShot>
+                      
+                      <Pressable
+                        style={[styles.button, styles.secondaryButton]}
+                        onPress={() => capturarConMarcaAgua(fotoUri)}
+                        disabled={loading}
+                      >
+                        <Text style={styles.buttonText}>Confirmar foto</Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              <View style={styles.infoContainer}>
+                <Text style={styles.infoText}>Hora del reporte: {hora || 'No registrada'}</Text>
+                {direccionCompleta && (
+                  <Text style={styles.infoText}>Dirección: {direccionCompleta}</Text>
+                )}
+                {ubicacion && (
+                  <Text style={styles.infoText}>
+                    Coordenadas: {ubicacion.latitude.toFixed(4)}, {ubicacion.longitude.toFixed(4)}
+                  </Text>
+                )}
+              </View>
+
+              <Pressable
+                style={[styles.submitButton, loading && styles.disabledButton]}
+                onPress={enviarReporte}
+                disabled={loading || !incidente || !descripcion || !ubicacionIncidente}
+              >
+                <Text style={styles.buttonText}>
+                  {loading ? 'Enviando...' : 'Enviar Reporte'}
+                </Text>
+              </Pressable>
+            </ScrollView>
+          </KeyboardAvoidingView>
+    </SafeAreaView>       
   );
 }
 
 const styles = StyleSheet.create({
+    safeArea: {
+    flex: 1,
+    backgroundColor: '#0A1E3D',
+  },
+  keyboardAvoiding: {
+    flex: 1,
+  },
   container: {
     flexGrow: 1,
     padding: 20,

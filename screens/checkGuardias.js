@@ -8,7 +8,7 @@ import {
   ScrollView, 
   StyleSheet, 
   Pressable, 
-  ActivityIndicator
+  ActivityIndicator,SafeAreaView, KeyboardAvoidingView, Platform
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -55,7 +55,10 @@ export default function CheckGuardias({ route }) {
     try {
       setLoading(true);
       await AsyncStorage.removeItem('userData');
-      navigation.replace('Login');
+       navigation.reset({
+      index: 0,
+      routes: [{ name: 'Login' }],
+    });
     } catch (error) {
       console.error('Error al cerrar sesión:', error);
       Alert.alert('Error', 'No se pudo cerrar la sesión');
@@ -225,110 +228,125 @@ export default function CheckGuardias({ route }) {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.profileHeader}>
-        <View style={styles.profileInfo}>
-          <Text style={styles.profileName}>{nombre}</Text>
-          <Text style={styles.profileBadge}>Empleado #{numeroEmpleado}</Text>
-        </View>
-        
-        <Pressable 
-          onPress={handleLogout}
-          style={styles.logoutButton}
-          disabled={loading}
-        >
-          <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.headerContainer}>
-        <Text style={styles.header}>Registro de servicio</Text>
-        <Text style={styles.subheader}>Selecciona tu tipo de check</Text>
-      </View>
-
-      <View style={styles.buttonContainer}>
-        <Pressable 
-          style={[styles.checkButton, styles.checkInButton]} 
-          onPress={() => obtenerUbicacionYHora('in')}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>Check In</Text>
-        </Pressable>
-
-        <Pressable 
-          style={[styles.checkButton, styles.checkOutButton]} 
-          onPress={() => obtenerUbicacionYHora('out')}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>Check Out</Text>
-        </Pressable>
-      </View>
-
-      {loading && <ActivityIndicator size="large" color="#009BFF" />}
-
-      {(direccion || hora) && (
-        <View style={styles.infoContainer}>
-          <Text style={styles.infoText}>Tipo: {tipoCheck === 'in' ? 'Check In' : 'Check Out'}</Text>
-          <Text style={styles.infoText}>Hora: {hora}</Text>
-          <Text style={styles.infoText}>Ubicación: {direccion}</Text>
-        </View>
-      )}
-
-      <Pressable 
-        onPress={tomarFoto} 
-        style={styles.button}
-        disabled={loading}
-      >
-        <Text style={styles.buttonText}>Tomar foto de evidencia</Text>
-      </Pressable>
-      
-      {foto && (
-        <View style={styles.imageContainer}>
-          <ViewShot 
-            ref={viewShotRef} 
-            options={{ format: "jpg", quality: 0.9 }}
-            style={styles.viewShot}
+      <SafeAreaView style={styles.safeArea}>
+        <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardAvoiding}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
           >
-            <Image source={{ uri: foto }} style={styles.image} />
-            <View style={styles.watermarkContainer}>
-              <Text style={styles.watermarkText}>{fechaHora}</Text>
-              <Text style={styles.watermarkText}>{nombre} - {numeroEmpleado}</Text>
+          <ScrollView contentContainerStyle={styles.container}>
+            <View style={styles.profileHeader}>
+              <View style={styles.profileInfo}>
+                <Text style={styles.profileName}>{nombre}</Text>
+                <Text style={styles.profileBadge}>Empleado #{numeroEmpleado}</Text>
+              </View>
+              
+              <Pressable 
+                onPress={handleLogout}
+                style={styles.logoutButton}
+                disabled={loading}
+              >
+                <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
+              </Pressable>
             </View>
-          </ViewShot>
-          
-          <Pressable 
-            onPress={capturarConMarcaAgua} 
-            style={[styles.button, styles.captureButton]}
-            disabled={loading || !foto}
-          >
-            <Text style={styles.buttonText}>Confirmar foto</Text>
-          </Pressable>
-        </View>
-      )}
 
-      <Text style={styles.label}>Comentarios:</Text>
-      <TextInput
-        style={[styles.input, styles.comentariosInput]}
-        placeholder="Ingrese comentarios (opcional)"
-        onChangeText={setComentarios}
-        value={comentarios}
-        multiline
-        numberOfLines={4}
-        editable={!loading}
-      />
+            <View style={styles.headerContainer}>
+              <Text style={styles.header}>Registro de servicio</Text>
+              <Text style={styles.subheader}>Selecciona tu tipo de check</Text>
+            </View>
 
-      <Pressable 
-        style={[styles.submitButton, (loading || !fotoConMarca) && styles.disabledButton]} 
-        onPress={enviarCheck} 
-        disabled={loading || !fotoConMarca || !tipoCheck}
-      >
-        <Text style={styles.buttonText}>Enviar Registro</Text>
-      </Pressable>
-    </ScrollView>
+            <View style={styles.buttonContainer}>
+              <Pressable 
+                style={[styles.checkButton, styles.checkInButton]} 
+                onPress={() => obtenerUbicacionYHora('in')}
+                disabled={loading}
+              >
+                <Text style={styles.buttonText}>Check In</Text>
+              </Pressable>
+
+              <Pressable 
+                style={[styles.checkButton, styles.checkOutButton]} 
+                onPress={() => obtenerUbicacionYHora('out')}
+                disabled={loading}
+              >
+                <Text style={styles.buttonText}>Check Out</Text>
+              </Pressable>
+            </View>
+
+            {loading && <ActivityIndicator size="large" color="#009BFF" />}
+
+            {(direccion || hora) && (
+              <View style={styles.infoContainer}>
+                <Text style={styles.infoText}>Tipo: {tipoCheck === 'in' ? 'Check In' : 'Check Out'}</Text>
+                <Text style={styles.infoText}>Hora: {hora}</Text>
+                <Text style={styles.infoText}>Ubicación: {direccion}</Text>
+              </View>
+            )}
+
+            <Pressable 
+              onPress={tomarFoto} 
+              style={styles.button}
+              disabled={loading}
+            >
+              <Text style={styles.buttonText}>Tomar foto de evidencia</Text>
+            </Pressable>
+            
+            {foto && (
+              <View style={styles.imageContainer}>
+                <ViewShot 
+                  ref={viewShotRef} 
+                  options={{ format: "jpg", quality: 0.9 }}
+                  style={styles.viewShot}
+                >
+                  <Image source={{ uri: foto }} style={styles.image} />
+                  <View style={styles.watermarkContainer}>
+                    <Text style={styles.watermarkText}>{fechaHora}</Text>
+                    <Text style={styles.watermarkText}>{nombre} - {numeroEmpleado}</Text>
+                  </View>
+                </ViewShot>
+                
+                <Pressable 
+                  onPress={capturarConMarcaAgua} 
+                  style={[styles.button, styles.captureButton]}
+                  disabled={loading || !foto}
+                >
+                  <Text style={styles.buttonText}>Confirmar foto</Text>
+                </Pressable>
+              </View>
+            )}
+
+            <Text style={styles.label}>Comentarios:</Text>
+            <TextInput
+              style={[styles.input, styles.comentariosInput]}
+              placeholder="Ingrese comentarios (opcional)"
+              onChangeText={setComentarios}
+              value={comentarios}
+              multiline
+              numberOfLines={4}
+              editable={!loading}
+            />
+
+            <Pressable 
+              style={[styles.submitButton, (loading || !fotoConMarca) && styles.disabledButton]} 
+              onPress={enviarCheck} 
+              disabled={loading || !fotoConMarca || !tipoCheck}
+            >
+              <Text style={styles.buttonText}>Enviar Registro</Text>
+            </Pressable>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#0A1E3D',
+  },
+  keyboardAvoiding: {
+    flex: 1,
+  },
   container: {
     flexGrow: 1,
     padding: 20,

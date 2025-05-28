@@ -83,6 +83,7 @@ const LoginScreen = ({ navigation }) => {
       };
       
       // Guardar datos del usuario en AsyncStorage
+      console.log(userData)
       await AsyncStorage.setItem('userData', JSON.stringify(userData));
       
       redirectUser(userData);

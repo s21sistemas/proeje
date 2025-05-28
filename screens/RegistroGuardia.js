@@ -8,7 +8,7 @@ import {
   ScrollView, 
   StyleSheet, 
   Pressable, 
-  ActivityIndicator
+  ActivityIndicator, KeyboardAvoidingView, SafeAreaView, Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -240,152 +240,168 @@ export default function RegistroGuardia({ route }) {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-    <View style={styles.headerContainer}>
-        <Text style={styles.header}>Check para guardia eventual</Text>
-        <Text style={styles.subheader}></Text>
-      
-      </View>
-      <View style={styles.profileHeader}>
-        <View style={styles.profileInfo}>
-          <Text style={styles.profileName}>Supervisor: {nombre}</Text>
-          <Text style={styles.profileBadge}>Empleado #{numeroEmpleado}</Text>
-          {idServicio && (
-            <Text style={styles.profileBadge}>Servicio #{idServicio}</Text>
-          )}
-        </View>
-     </View>
 
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>Nombre del Guardia:</Text>
-        <TextInput
-          style={styles.input}
-          value={nombreGuardia}
-          onChangeText={setNombreGuardia}
-          editable={!loading}
-        />
-      </View>
+        <SafeAreaView style={styles.safeArea}>
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={styles.keyboardAvoiding}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+              >
+                <ScrollView contentContainerStyle={styles.container}>
+                <View style={styles.headerContainer}>
+                    <Text style={styles.header}>Check para guardia eventual</Text>
+                    <Text style={styles.subheader}></Text>
+                  
+                  </View>
+                  <View style={styles.profileHeader}>
+                    <View style={styles.profileInfo}>
+                      <Text style={styles.profileName}>Supervisor: {nombre}</Text>
+                      <Text style={styles.profileBadge}>Empleado #{numeroEmpleado}</Text>
+                      {idServicio && (
+                        <Text style={styles.profileBadge}>Servicio #{idServicio}</Text>
+                      )}
+                    </View>
+                </View>
 
-      <View style={styles.formGroup}>
-        <Text style={styles.label}>ID de Servicio:</Text>
-        <TextInput
-          style={styles.input}
-          value={idServicio}
-          onChangeText={setIdServicio}
-          editable={!loading}
-          placeholder="Ingrese el ID del servicio"
-        />
-      </View>
-      <View style={styles.headerContainer}>
-        <Text style={styles.label}>Selecciona el tipo de check:</Text>
-      
-      </View>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Nombre del Guardia:</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={nombreGuardia}
+                      onChangeText={setNombreGuardia}
+                      editable={!loading}
+                    />
+                  </View>
 
-      <View style={styles.buttonContainer}>
-        <Pressable 
-          style={[styles.checkButton, styles.checkInButton]} 
-          onPress={() => obtenerUbicacionYHora('in')}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>Check In</Text>
-        </Pressable>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>ID de Servicio:</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={idServicio}
+                      onChangeText={setIdServicio}
+                      editable={!loading}
+                      placeholder="Ingrese el ID del servicio"
+                    />
+                  </View>
+                  <View style={styles.headerContainer}>
+                    <Text style={styles.label}>Selecciona el tipo de check:</Text>
+                  
+                  </View>
 
-        <Pressable 
-          style={[styles.checkButton, styles.checkOutButton]} 
-          onPress={() => obtenerUbicacionYHora('out')}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>Check Out</Text>
-        </Pressable>
-      </View>
+                  <View style={styles.buttonContainer}>
+                    <Pressable 
+                      style={[styles.checkButton, styles.checkInButton]} 
+                      onPress={() => obtenerUbicacionYHora('in')}
+                      disabled={loading}
+                    >
+                      <Text style={styles.buttonText}>Check In</Text>
+                    </Pressable>
 
-      {loading && <ActivityIndicator size="large" color="#009BFF" />}
+                    <Pressable 
+                      style={[styles.checkButton, styles.checkOutButton]} 
+                      onPress={() => obtenerUbicacionYHora('out')}
+                      disabled={loading}
+                    >
+                      <Text style={styles.buttonText}>Check Out</Text>
+                    </Pressable>
+                  </View>
 
-      {(direccion || hora) && (
-        <View style={styles.infoContainer}>
-          <Text style={styles.infoText}>Tipo: {tipoCheck === 'in' ? 'Check In' : 'Check Out'}</Text>
-          <Text style={styles.infoText}>Hora: {hora}</Text>
-          <Text style={styles.infoText}>Ubicación: {direccion}</Text>
-        </View>
-      )}
+                  {loading && <ActivityIndicator size="large" color="#009BFF" />}
 
-      <View style={styles.photoButtonsContainer}>
-        <Pressable 
-          style={[styles.button, styles.photoButton]}
-          onPress={seleccionarFotoGaleria}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>Seleccionar foto</Text>
-        </Pressable>
-        
-        <Pressable 
-          onPress={tomarFoto} 
-          style={[styles.button, styles.photoButton]}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>Tomar foto</Text>
-        </Pressable>
-      </View>
+                  {(direccion || hora) && (
+                    <View style={styles.infoContainer}>
+                      <Text style={styles.infoText}>Tipo: {tipoCheck === 'in' ? 'Check In' : 'Check Out'}</Text>
+                      <Text style={styles.infoText}>Hora: {hora}</Text>
+                      <Text style={styles.infoText}>Ubicación: {direccion}</Text>
+                    </View>
+                  )}
 
-      {foto && (
-        <View style={styles.imageContainer}>
-          <ViewShot 
-            ref={viewShotRef} 
-            options={{ format: "jpg", quality: 0.9 }}
-            style={styles.viewShot}
-          >
-            <Image source={{ uri: foto }} style={styles.image} />
-            <View style={styles.watermarkContainer}>
-              <Text style={styles.watermarkText}>{fechaHora}</Text>
-              <Text style={styles.watermarkText}>{nombreGuardia} - {numeroEmpleado}</Text>
-              <Text style={styles.watermarkText}>Servicio #{idServicio}</Text>
-            </View>
-          </ViewShot>
-          
-          <Pressable 
-            onPress={capturarConMarcaAgua} 
-            style={[styles.button, styles.captureButton]}
-            disabled={loading || !foto}
-          >
-            <Text style={styles.buttonText}>Confirmar foto</Text>
-          </Pressable>
-        </View>
-      )}
+                  <View style={styles.photoButtonsContainer}>
+                    <Pressable 
+                      style={[styles.button, styles.photoButton]}
+                      onPress={seleccionarFotoGaleria}
+                      disabled={loading}
+                    >
+                      <Text style={styles.buttonText}>Seleccionar foto</Text>
+                    </Pressable>
+                    
+                    <Pressable 
+                      onPress={tomarFoto} 
+                      style={[styles.button, styles.photoButton]}
+                      disabled={loading}
+                    >
+                      <Text style={styles.buttonText}>Tomar foto</Text>
+                    </Pressable>
+                  </View>
 
-      {fotoGaleria && !foto && (
-        <View style={styles.imageContainer}>
-          <Image source={{ uri: fotoGaleria }} style={styles.image} />
-          <View style={styles.infoContainer}>
-            <Text style={styles.infoText}>Foto seleccionada de galería</Text>
-            <Text style={styles.infoText}>{nombreGuardia} - {numeroEmpleado}</Text>
-            <Text style={styles.infoText}>Servicio #{idServicio}</Text>
-          </View>
-        </View>
-      )}
+                  {foto && (
+                    <View style={styles.imageContainer}>
+                      <ViewShot 
+                        ref={viewShotRef} 
+                        options={{ format: "jpg", quality: 0.9 }}
+                        style={styles.viewShot}
+                      >
+                        <Image source={{ uri: foto }} style={styles.image} />
+                        <View style={styles.watermarkContainer}>
+                          <Text style={styles.watermarkText}>{fechaHora}</Text>
+                          <Text style={styles.watermarkText}>{nombreGuardia} - {numeroEmpleado}</Text>
+                          <Text style={styles.watermarkText}>Servicio #{idServicio}</Text>
+                        </View>
+                      </ViewShot>
+                      
+                      <Pressable 
+                        onPress={capturarConMarcaAgua} 
+                        style={[styles.button, styles.captureButton]}
+                        disabled={loading || !foto}
+                      >
+                        <Text style={styles.buttonText}>Confirmar foto</Text>
+                      </Pressable>
+                    </View>
+                  )}
 
-      <Text style={styles.label}>Comentarios:</Text>
-      <TextInput
-        style={[styles.input, styles.comentariosInput]}
-        placeholder="Ingrese comentarios (opcional)"
-        onChangeText={setComentarios}
-        value={comentarios}
-        multiline
-        numberOfLines={4}
-        editable={!loading}
-      />
+                  {fotoGaleria && !foto && (
+                    <View style={styles.imageContainer}>
+                      <Image source={{ uri: fotoGaleria }} style={styles.image} />
+                      <View style={styles.infoContainer}>
+                        <Text style={styles.infoText}>Foto seleccionada de galería</Text>
+                        <Text style={styles.infoText}>{nombreGuardia} - {numeroEmpleado}</Text>
+                        <Text style={styles.infoText}>Servicio #{idServicio}</Text>
+                      </View>
+                    </View>
+                  )}
 
-      <Pressable 
-        style={[styles.submitButton, (loading || (!fotoConMarca && !fotoGaleria)) && styles.disabledButton]} 
-        onPress={enviarCheck} 
-        disabled={loading || (!fotoConMarca && !fotoGaleria) || !tipoCheck}
-      >
-        <Text style={styles.buttonText}>Enviar Registro</Text>
-      </Pressable>
-    </ScrollView>
+                  <Text style={styles.label}>Comentarios:</Text>
+                  <TextInput
+                    style={[styles.input, styles.comentariosInput]}
+                    placeholder="Ingrese comentarios (opcional)"
+                    onChangeText={setComentarios}
+                    value={comentarios}
+                    multiline
+                    numberOfLines={4}
+                    editable={!loading}
+                  />
+
+                  <Pressable 
+                    style={[styles.submitButton, (loading || (!fotoConMarca && !fotoGaleria)) && styles.disabledButton]} 
+                    onPress={enviarCheck} 
+                    disabled={loading || (!fotoConMarca && !fotoGaleria) || !tipoCheck}
+                  >
+                    <Text style={styles.buttonText}>Enviar Registro</Text>
+                  </Pressable>
+                </ScrollView>
+              </KeyboardAvoidingView>
+        </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+ safeArea: {
+    flex: 1,
+    backgroundColor: '#0A1E3D',
+  },
+  keyboardAvoiding: {
+    flex: 1,
+  },
   container: {
     flexGrow: 1,
     padding: 20,

@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Alert
+  Alert, Platform, SafeAreaView, KeyboardAvoidingView
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -27,7 +27,10 @@ const DashboardSupervisor = ({ navigation, route }) => {
   const handleLogout = async () => {
     try {
       await AsyncStorage.removeItem('userData');
-      navigation.navigate('Login');
+       navigation.reset({
+      index: 0,
+      routes: [{ name: 'Login' }],
+    });
     } catch (error) {
       console.error('Error al cerrar sesión:', error);
       Alert.alert('Error', 'No se pudo cerrar la sesión. Intente nuevamente.');
@@ -79,116 +82,131 @@ const DashboardSupervisor = ({ navigation, route }) => {
   };
 
   return (
-    <View style={styles.container}>
-      {/* Header con botón de cerrar sesión */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.welcomeText}>Bienvenido, {nombre}</Text>
-          <Text style={styles.subText}>Número de empleado: {numeroEmpleado}</Text>
-        </View>
+    <SafeAreaView style={styles.safeArea}>
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={styles.keyboardAvoiding}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+              >
+                <View style={styles.container}>
+                  {/* Header con botón de cerrar sesión */}
+                  <View style={styles.header}>
+                    <View>
+                      <Text style={styles.welcomeText}>Bienvenido, {nombre}</Text>
+                      <Text style={styles.subText}>Número de empleado: {numeroEmpleado}</Text>
+                    </View>
 
-      </View>
+                  </View>
 
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>Resumen del día</Text>
-          <TouchableOpacity 
-            style={styles.logoutButton}
-            onPress={handleLogout}
-          >
-            <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.resumenText}>
-          Órdenes de servicio: {ordenes.length}
-        </Text>
-      </View>
+                  <View style={styles.card}>
+                    <View style={styles.cardHeader}>
+                      <Text style={styles.cardTitle}>Resumen del día</Text>
+                      <TouchableOpacity 
+                        style={styles.logoutButton}
+                        onPress={handleLogout}
+                      >
+                        <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.resumenText}>
+                      Órdenes de servicio: {ordenes.length}
+                    </Text>
+                  </View>
 
-      <Text style={styles.sectionTitle}>Órdenes de servicio asignadas</Text>
+                  <Text style={styles.sectionTitle}>Órdenes de servicio asignadas</Text>
 
-      {loading ? (
-        <ActivityIndicator size="large" color="#4CAF50" />
-      ) : error ? (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity 
-            style={styles.retryButton}
-            onPress={retryFetch}
-          >
-            <Text style={styles.retryButtonText}>Reintentar</Text>
-          </TouchableOpacity>
-        </View>
-      ) : ordenes.length === 0 ? (
-        <Text style={styles.emptyText}>No hay órdenes de servicio asignadas</Text>
-      ) : (
-        <ScrollView style={styles.bitacorasContainer}>
-          {ordenes.map((orden) => (
-            <View key={orden.id} style={styles.bitacoraCard}>
-              <View style={[styles.bitacoraRow, { marginBottom: 10 }]}>
-                <Text style={[styles.bitacoraLabel, { color: '#4CAF50' }]}>Estatus:</Text>
-                <Text style={[styles.bitacoraValue, { fontWeight: 'bold' }]}>
-                  {orden.estatus || 'No especificado'}
-                </Text>
-              </View>
+                  {loading ? (
+                    <ActivityIndicator size="large" color="#4CAF50" />
+                  ) : error ? (
+                    <View style={styles.errorContainer}>
+                      <Text style={styles.errorText}>{error}</Text>
+                      <TouchableOpacity 
+                        style={styles.retryButton}
+                        onPress={retryFetch}
+                      >
+                        <Text style={styles.retryButtonText}>Reintentar</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : ordenes.length === 0 ? (
+                    <Text style={styles.emptyText}>No hay órdenes de servicio asignadas</Text>
+                  ) : (
+                    <ScrollView style={styles.bitacorasContainer}>
+                      {ordenes.map((orden) => (
+                        <View key={orden.id} style={styles.bitacoraCard}>
+                          <View style={[styles.bitacoraRow, { marginBottom: 10 }]}>
+                            <Text style={[styles.bitacoraLabel, { color: '#4CAF50' }]}>Estatus:</Text>
+                            <Text style={[styles.bitacoraValue, { fontWeight: 'bold' }]}>
+                              {orden.estatus || 'No especificado'}
+                            </Text>
+                          </View>
 
-              <View style={styles.bitacoraRow}>
-                <Text style={styles.bitacoraLabel}>Domicilio:</Text>
-                <Text style={styles.bitacoraValue}>{orden.domicilio_servicio || 'N/A'}</Text>
-              </View>
+                          <View style={styles.bitacoraRow}>
+                            <Text style={styles.bitacoraLabel}>Domicilio:</Text>
+                            <Text style={styles.bitacoraValue}>{orden.domicilio_servicio || 'N/A'}</Text>
+                          </View>
 
-              <View style={styles.bitacoraRow}>
-                <Text style={styles.bitacoraLabel}>Responsable:</Text>
-                <Text style={styles.bitacoraValue}>{orden.nombre_responsable_sitio || 'N/A'}</Text>
-              </View>
+                          <View style={styles.bitacoraRow}>
+                            <Text style={styles.bitacoraLabel}>Responsable:</Text>
+                            <Text style={styles.bitacoraValue}>{orden.nombre_responsable_sitio || 'N/A'}</Text>
+                          </View>
 
-              <View style={styles.bitacoraRow}>
-                <Text style={styles.bitacoraLabel}>Teléfono:</Text>
-                <Text style={styles.bitacoraValue}>{orden.telefono_responsable_sitio || 'N/A'}</Text>
-              </View>
+                          <View style={styles.bitacoraRow}>
+                            <Text style={styles.bitacoraLabel}>Teléfono:</Text>
+                            <Text style={styles.bitacoraValue}>{orden.telefono_responsable_sitio || 'N/A'}</Text>
+                          </View>
 
-              <View style={styles.bitacoraRow}>
-                <Text style={styles.bitacoraLabel}>Inicio:</Text>
-                <Text style={styles.bitacoraValue}>{formatDate(orden.fecha_inicio)}</Text>
-              </View>
+                          <View style={styles.bitacoraRow}>
+                            <Text style={styles.bitacoraLabel}>Inicio:</Text>
+                            <Text style={styles.bitacoraValue}>{formatDate(orden.fecha_inicio)}</Text>
+                          </View>
 
-              <View style={styles.bitacoraRow}>
-                <Text style={styles.bitacoraLabel}>Fin:</Text>
-                <Text style={styles.bitacoraValue}>{formatDate(orden.fecha_fin)}</Text>
-              </View>
+                          <View style={styles.bitacoraRow}>
+                            <Text style={styles.bitacoraLabel}>Fin:</Text>
+                            <Text style={styles.bitacoraValue}>{formatDate(orden.fecha_fin)}</Text>
+                          </View>
 
-              {/* Botones para cada orden */}
-              <View style={styles.buttonsContainer}>
-                <TouchableOpacity
-                  style={[styles.cardButton, styles.detailsButton]}
-                  onPress={() => navigation.navigate('DetallesOrden', { orden })}
-                >
-                  <Text style={styles.buttonText}>Ver Detalles</Text>
-                </TouchableOpacity>
+                          {/* Botones para cada orden */}
+                          <View style={styles.buttonsContainer}>
+                            <TouchableOpacity
+                              style={[styles.cardButton, styles.detailsButton]}
+                              onPress={() => navigation.navigate('DetallesOrden', { orden })}
+                            >
+                              <Text style={styles.buttonText}>Ver Detalles</Text>
+                            </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[styles.cardButton, styles.newBitacoraButton]}
-                  onPress={() =>
-                    navigation.navigate('BitacoraForm', {
-                      nombre: nombre,
-                      numeroEmpleado: numeroEmpleado,
-                      id: id,
-                      datosCompletos: datosCompletos,
-                      ordenServicio: orden // Enviamos la orden completa
-                    })
-                  }
-                >
-                  <Text style={styles.buttonText}>Nueva Bitácora</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
-        </ScrollView>
-      )}
-    </View>
+                            <TouchableOpacity
+                              style={[styles.cardButton, styles.newBitacoraButton]}
+                              onPress={() =>
+                                navigation.navigate('BitacoraForm', {
+                                  nombre: nombre,
+                                  numeroEmpleado: numeroEmpleado,
+                                  id: id,
+                                  datosCompletos: datosCompletos,
+                                  ordenServicio: orden // Enviamos la orden completa
+                                })
+                              }
+                            >
+                              <Text style={styles.buttonText}>Nueva Bitácora</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  )}
+                </View>
+              </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#0A1E3D',
+  },
+  keyboardAvoiding: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     padding: 20,
