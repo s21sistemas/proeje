@@ -76,7 +76,7 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
     }
   };
 
-  const uploadImage = async (uri) => {
+  const subirImagen = async (uri) => {
     const blob = await new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.onload = function() {
@@ -97,7 +97,7 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
     return await getDownloadURL(storageRef);
   };
 
-  const saveToFirebase = async () => {
+  const guardarReporte = async () => {
   if (!qrData) {
     Alert.alert("Error", "Primero escanea un código QR");
     return;
@@ -107,7 +107,7 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
   try {
     let imageUrl = null;
     if (image) {
-      imageUrl = await uploadImage(image); // Asumo que esta función sube la imagen a algún storage
+      imageUrl = await subirImagen(image); 
     }
 
         // Opción 1: Si también quieres guardar en Firestore (opcional)
@@ -123,7 +123,7 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
 
     // Datos para el endpoint
     const requestData = {
-      guardia_id: datosCompletos.id, // Asumo que numeroEmpleado es el ID del guardia
+      guardia_id: datosCompletos.id,
       uuid: qrData, // El código QR escaneado
       observaciones: comment,
       foto: imageUrl
@@ -134,6 +134,8 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        //'Accept': 'application/json'
+
       },
       body: JSON.stringify(requestData)
     });
@@ -144,9 +146,6 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
 
     const result = await response.json();
     console.log("Respuesta del servidor:", result);
-
-
-  
 
     Alert.alert("Listo", "Punto registrado correctamente, recuerda completar la ruta");
     resetScanner();
@@ -232,7 +231,7 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
                   
                   <TouchableOpacity 
                     style={[styles.button, styles.saveButton]} 
-                    onPress={saveToFirebase}
+                    onPress={guardarReporte}
                     disabled={loading}
                   >
                     {loading ? (

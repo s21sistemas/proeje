@@ -208,7 +208,7 @@ const ReporteDiarioGuardia = ({ route }) => {
     }));
   };
 
-  const submitReport = async () => {
+  const enviarReporte = async () => {
     try {
       if (!reportData.puntoVigilancia || !reportData.elementoRecibe) {
         Alert.alert('Campos requeridos', 'Punto de vigilancia y elemento que recibe son obligatorios');
@@ -362,17 +362,13 @@ const ReporteDiarioGuardia = ({ route }) => {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
     >
       <ScrollView 
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
+       
+        contentContainerStyle={styles.container}
       >
         {/* Encabezado */}
-        <View style={styles.headerContainer}>
-          <Text style={styles.header}>Reporte diario</Text>
-          <Text style={styles.subheader}></Text>
-        </View>
         <View style={styles.profileHeader}>
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>Guardia: {nombre}</Text>
+            <Text style={styles.profileName}>{nombre}</Text>
             <Text style={styles.profileBadge}>Empleado #{numeroEmpleado}</Text>
           </View>
         </View>
@@ -653,7 +649,7 @@ const ReporteDiarioGuardia = ({ route }) => {
             pressed && styles.saveButtonPressed,
             loading && styles.saveButtonDisabled
           ]}
-          onPress={submitReport}
+          onPress={enviarReporte}
           disabled={loading}
         >
           {loading ? (
@@ -674,17 +670,18 @@ const styles = StyleSheet.create({
   keyboardAvoiding: {
     flex: 1,
   },
-  container: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
+   container: {
+    flexGrow: 1,
+    padding: 20,
+    backgroundColor: '#f5f5f5',
+    paddingBottom: 40,
   },
   contentContainer: {
     padding: 15,
     paddingBottom: 30,
   },
   profileHeader: {
-    marginBottom: 25,
-    backgroundColor: '#1E3A8A',
+    backgroundColor: '#0A1E3D',
     padding: 15,
     borderRadius: 15,
     elevation: 5,
@@ -692,6 +689,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.3,
     shadowRadius: 5,
+    marginBottom: 20,
   },
   profileInfo: {
     flex: 1,
@@ -710,10 +708,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 10,
     alignSelf: 'flex-start',
-    marginTop: 5,
   },
   headerContainer: {
-    marginBottom: 10,
+    marginBottom: 20,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ddd',
   },
   header: {
     fontSize: 22,

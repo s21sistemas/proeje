@@ -45,7 +45,9 @@ export default function ReporteIncidentesScreen({ route }) {
   const viewShotRef = useRef(null);
   const [ordenServicioId, setOrdenServicioId] = useState(null);
   const [fetchingOrden, setFetchingOrden] = useState(true);
+  const [fotosConfirmadas, setFotosConfirmadas] = useState([]);
 
+  const [formularioValido, setFormularioValido] = useState(false);
   // Tipos de incidentes predefinidos
   const tiposIncidentes = [
     "Conato de incendio",
@@ -111,6 +113,24 @@ export default function ReporteIncidentesScreen({ route }) {
 
     verificarPermisos();
   }, []);
+
+// validación del formulario
+  useEffect(() => {
+  const validarFormulario = () => {
+    const camposObligatorios = [
+      puntoVigilancia,
+      incidente,
+      descripcion,
+      ubicacionIncidente
+    ];
+    
+    const todosLlenos = camposObligatorios.every(campo => campo && campo.trim() !== '');
+    setFormularioValido(todosLlenos);
+  };
+
+  validarFormulario();
+}, [puntoVigilancia, incidente, descripcion, ubicacionIncidente]);
+
     //obtención del id de la orden de servicio
     useEffect(() => {
       const fetchOrdenServicio = async () => {
@@ -142,58 +162,54 @@ export default function ReporteIncidentesScreen({ route }) {
       fetchOrdenServicio();
     }, [datosCompletos.id]);
 
-  const obtenerDireccionCompleta = async () => {
-    try {
-      setLoading(true);
+const obtenerDireccionCompleta = async () => {
+  try {
+    setLoading(true);
+    
+    const location = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+      timeInterval: 5000
+    });
+    setUbicacion(location.coords);
+    
+    const address = await Location.reverseGeocodeAsync({
+      latitude: location.coords.latitude,
+      longitude: location.coords.longitude
+    });
+    
+    if (address.length > 0) {
+      const dir = [
+        address[0].street,
+        address[0].streetNumber ? `#${address[0].streetNumber}` : '',
+        address[0].subregion,
+        address[0].city,
+        address[0].region,
+        address[0].country
+      ].filter(Boolean).join(', ');
       
-      // 1. Obtener ubicación actual
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-        timeInterval: 5000
-      });
-      setUbicacion(location.coords);
-      
-      // 2. Convertir coordenadas a dirección
-      const address = await Location.reverseGeocodeAsync({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude
-      });
-      
-      // 3. Formatear dirección
-      if (address.length > 0) {
-        const dir = [
-          address[0].street,
-          address[0].streetNumber ? `#${address[0].streetNumber}` : '',
-          address[0].subregion,
-          address[0].city,
-          address[0].region,
-          address[0].country
-        ].filter(Boolean).join(', ');
-        
-        setDireccionCompleta(dir);
-        setUbicacionIncidente(dir); // Autocompletar el campo de ubicación
-      } else {
-        Alert.alert("Información", "No se pudo determinar la dirección exacta");
-      }
-      
-      // 4. Obtener hora actual
-      const ahora = new Date();
-      setHora(ahora.toLocaleTimeString('es-MX'));
-      setFechaHora(ahora.toLocaleString('es-MX', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      }));
-      
-    } catch (error) {
-      console.error("Error obteniendo dirección:", error);
-      Alert.alert("Error", "No se pudo obtener la ubicación. Verifica que tengas activado el GPS");
-    } finally {
-      setLoading(false);
+      setDireccionCompleta(dir);
+      setUbicacionIncidente(dir); // Autocompletar el campo de ubicación
+    } else {
+      Alert.alert("Información", "No se pudo determinar la dirección exacta");
     }
-  };
+    
+    const ahora = new Date();
+    setHora(ahora.toLocaleTimeString('es-MX'));
+    setFechaHora(ahora.toLocaleString('es-MX', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }));
+    
+  } catch (error) {
+    console.error("Error obteniendo dirección:", error);
+    Alert.alert("Error", "No se pudo obtener la ubicación. Verifica que tengas activado el GPS");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const tomarFoto = async () => {
     try {
@@ -214,22 +230,40 @@ export default function ReporteIncidentesScreen({ route }) {
     }
   };
 
-  const capturarConMarcaAgua = async (fotoUri) => {
-    try {
-      setLoading(true);
-      const uri = await viewShotRef.current.capture();
-      setFotosConMarca([...fotosConMarca, uri]);
-      
-      // Opcional: guardar en galería
-      await MediaLibrary.saveToLibraryAsync(uri);
-    } catch (error) {
-      Alert.alert("Error", "No se pudo procesar la foto");
-    } finally {
-      setLoading(false);
-    }
-  };
+const capturarConMarcaAgua = async (fotoUri, index) => {
+  try {
+    setLoading(true);
+    const uri = await viewShotRef.current.capture();
+    
+    // Agregar a fotos con marca
+    const nuevasFotosConMarca = [...fotosConMarca];
+    nuevasFotosConMarca[index] = uri;
+    setFotosConMarca(nuevasFotosConMarca);
+    
+    // Marcar como confirmada
+    setFotosConfirmadas([...fotosConfirmadas, index]);
+    
+    // Guardar info de debug
 
-  const uploadImageToFirebase = async (imageUri) => {
+    
+    // Opcional: guardar en galería
+    await MediaLibrary.saveToLibraryAsync(uri);
+    
+    // Mostrar feedback visual
+    Alert.alert(
+      "Foto confirmada",
+      "La foto ha sido guardada con marca de agua y datos",
+      [{ text: "OK" }]
+    );
+    
+  } catch (error) {
+    Alert.alert("Error", "No se pudo procesar la foto");
+  } finally {
+    setLoading(false);
+  }
+};
+
+  const subirImagenFirebase = async (imageUri) => {
     try {
       const response = await fetch(imageUri);
       const blob = await response.blob();
@@ -246,8 +280,31 @@ export default function ReporteIncidentesScreen({ route }) {
   };
 
   const enviarReporte = async () => {
-  if (!incidente || !descripcion || !ubicacionIncidente) {
-    Alert.alert("Error", "Complete los campos obligatorios");
+
+  const camposObligatorios = {
+    "Punto de vigilancia": puntoVigilancia,
+    "Tipo de incidente": incidente,
+    "Descripción": descripcion,
+    "Ubicación": ubicacionIncidente
+  };
+
+  const camposFaltantes = Object.entries(camposObligatorios)
+    .filter(([_, valor]) => !valor || valor.trim() === '')
+    .map(([nombre]) => nombre);
+
+  if (camposFaltantes.length > 0) {
+    Alert.alert(
+      "Campos incompletos",
+      `Por favor complete los siguientes campos obligatorios:\n\n${camposFaltantes.join('\n')}`
+    );
+    return;
+  }
+
+  if (fotos.length === 0) {
+    Alert.alert(
+      "Evidencia requerida",
+      "Debe agregar al menos una foto como evidencia"
+    );
     return;
   }
 
@@ -256,7 +313,7 @@ export default function ReporteIncidentesScreen({ route }) {
   try {
     // Subir imágenes en paralelo
     const fotosUrls = await Promise.all(
-      fotosConMarca.map(uploadImageToFirebase)
+      fotosConMarca.map(subirImagenFirebase)
     ).then(results => results.filter(url => url !== null));
 
     // Datos para Firestore
@@ -281,11 +338,11 @@ export default function ReporteIncidentesScreen({ route }) {
       ubicacion,
       estado: "Pendiente",
       timestamp: new Date().getTime(),
-      ordenServicioId // Asegúrate de que este estado esté definido
+      ordenServicioId // 
     };
 
     // Guardar en Firestore
-   // await addDoc(collection(db, "reportesIncidentes"), reporteData);
+   // await addDoc(collection(db, "reportesIncidentes"), reporteData); remanente de codigo de cuando se guardaba en firebase 
     
     // Datos para el API externo
     const apiData = {
@@ -341,14 +398,41 @@ export default function ReporteIncidentesScreen({ route }) {
     console.error("Error guardando reporte:", error);
     Alert.alert(
       "Aviso", 
-      error.message.includes('API externa') 
-        ? "El reporte no se guardó en el servidor" 
+      error.message.includes('API externa') //prueba para ver si fallaba el reporte al guardarlo en el API
+        ? "Error al guardar el reporte" 
         : "No se pudo guardar el reporte"
     );
   } finally {
     setLoading(false);
   }
 };
+      const eliminarFoto = (index) => {
+        Alert.alert(
+          "Eliminar foto",
+          "¿Estás seguro de que quieres eliminar esta foto?",
+          [
+            {
+              text: "Cancelar",
+              style: "cancel"
+            },
+            {
+              text: "Eliminar",
+              onPress: () => {
+                // Eliminar de todos los estados relevantes
+                const nuevasFotos = [...fotos];
+                nuevasFotos.splice(index, 1);
+                setFotos(nuevasFotos);
+                
+                const nuevasFotosConMarca = [...fotosConMarca];
+                nuevasFotosConMarca.splice(index, 1);
+                setFotosConMarca(nuevasFotosConMarca);
+                
+                setFotosConfirmadas(fotosConfirmadas.filter(i => i !== index));
+              }
+            }
+          ]
+        );
+      };
 
   if (!permisosListos) {
     return (
@@ -443,11 +527,11 @@ export default function ReporteIncidentesScreen({ route }) {
               </Pressable>
               
               <TextInput
-                style={styles.input}
+                style={[styles.input, styles.disabledInput]}
                 placeholder="Ej: Patio de almacenamiento, sector B"
                 value={ubicacionIncidente}
                 onChangeText={setUbicacionIncidente}
-                editable={!loading}
+                editable={false}
               />
 
               <Text style={styles.label}>Causa probable</Text>
@@ -492,42 +576,86 @@ export default function ReporteIncidentesScreen({ route }) {
                 editable={!loading}
               />
 
-              <Text style={styles.label}>Evidencia fotográfica</Text>
-              <Pressable 
-                style={styles.button}
-                onPress={tomarFoto}
-                disabled={loading}
-              >
-                <Ionicons name="camera" size={20} color="white" />
-                <Text style={styles.buttonText}> Tomar foto</Text>
-              </Pressable>
+                <Text style={styles.label}>Evidencia fotográfica</Text>
+                <Pressable 
+                  style={[styles.button, (!formularioValido || loading) && styles.disabledButton]}
+                  onPress={() => {
+                    if (!formularioValido) {
+                      Alert.alert(
+                        "Campos incompletos",
+                        "Por favor complete todos los campos obligatorios antes de tomar fotos"
+                      );
+                    } else {
+                      tomarFoto();
+                    }
+                  }}
+                  disabled={loading || !formularioValido}
+                >
+                  <Ionicons name="camera" size={20} color="white" />
+                  <Text style={styles.buttonText}>
+                    {loading ? 'Cargando...' : !formularioValido ? 'Llena todos los campos primero' : 'Tomar foto'}
+                  </Text>
+                </Pressable>
 
               {fotos.length > 0 && (
-                <View style={styles.photosContainer}>
-                  {fotos.map((fotoUri, index) => (
-                    <View key={index} style={styles.photoItem}>
-                      <ViewShot
-                        ref={viewShotRef}
-                        options={{ format: 'jpg', quality: 0.9 }}
-                        style={styles.viewShot}
-                      >
-                        <Image source={{ uri: fotoUri }} style={styles.image} />
-                        <View style={styles.watermarkContainer}>
-                          <Text style={styles.watermarkText}>{fechaHora}</Text>
-                          <Text style={styles.watermarkText}>{nombre} - #{numeroEmpleado}</Text>
-                          <Text style={styles.watermarkText}>{puntoVigilancia} - {turno}</Text>
+                <View style={styles.photosSection}>
+                  <Text style={styles.sectionTitle}>Evidencia Fotográfica Tomada: ({fotos.length})</Text>
+                  
+                  <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.horizontalGallery}
+                  >
+                    {fotos.map((fotoUri, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        {/* Contenedor principal de la foto */}
+                        <ViewShot
+                          ref={viewShotRef}
+                          options={{ format: 'jpg', quality: 0.9 }}
+                          style={styles.viewShot}
+                        >
+                          <Image source={{ uri: fotoUri }} style={styles.galleryImage} />
+                          <View style={styles.watermarkContainer}>
+                            <Text style={styles.watermarkText}>{fechaHora}</Text>
+                            <Text style={styles.watermarkText}>{nombre} - #{numeroEmpleado}</Text>
+                            <Text style={styles.watermarkText}>{puntoVigilancia} - {turno}</Text>
+                          </View>
+                        </ViewShot>
+
+                        {/* Controles de la foto */}
+                        <View style={styles.photoControls}>
+                          {/* Botón de eliminar */}
+                          <Pressable
+                            style={[styles.controlButton, styles.deleteButton]}
+                            onPress={() => eliminarFoto(index)}
+                          >
+                            <Ionicons name="trash" size={18} color="white" />
+                            <Text style={styles.controlButtonText}> Eliminar</Text>
+                          </Pressable>
+
+                          {/* Botón de confirmar (solo si no está confirmada) */}
+                          {!fotosConfirmadas.includes(index) && (
+                            <Pressable
+                              style={[styles.controlButton, styles.confirmButton]}
+                              onPress={() => capturarConMarcaAgua(fotoUri, index)}
+                              disabled={loading}
+                            >
+                              <Ionicons name="checkmark" size={18} color="white" />
+                              <Text style={styles.controlButtonText}> Confirmar</Text>
+                            </Pressable>
+                          )}
+
+                          {/* Indicador de estado */}
+                          {fotosConfirmadas.includes(index) && (
+                            <View style={[styles.controlButton, styles.confirmedStatus]}>
+                              <Ionicons name="checkmark-done" size={18} color="white" />
+                              <Text style={styles.controlButtonText}> Confirmada</Text>
+                            </View>
+                          )}
                         </View>
-                      </ViewShot>
-                      
-                      <Pressable
-                        style={[styles.button, styles.secondaryButton]}
-                        onPress={() => capturarConMarcaAgua(fotoUri)}
-                        disabled={loading}
-                      >
-                        <Text style={styles.buttonText}>Confirmar foto</Text>
-                      </Pressable>
-                    </View>
-                  ))}
+                      </View>
+                    ))}
+                  </ScrollView>
                 </View>
               )}
 
@@ -693,9 +821,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
     borderRadius: 8,
   },
-  disabledButton: {
-    backgroundColor: '#cccccc',
-  },
+
   buttonText: {
     color: 'white',
     fontSize: 16,
@@ -747,4 +873,132 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 5,
   },
+  sectionTitle: {
+  fontSize: 18,
+  fontWeight: 'bold',
+  color: '#333',
+  marginBottom: 15,
+  marginTop: 10,
+},
+thumbnailContainer: {
+  position: 'relative',
+  marginBottom: 15,
+},
+thumbnail: {
+  width: '100%',
+  height: 120,
+  borderRadius: 8,
+},
+deleteButton: {
+  position: 'absolute',
+  top: 10,
+  right: 10,
+  backgroundColor: 'rgba(255, 59, 48, 0.8)',
+  borderRadius: 20,
+  width: 40,
+  height: 40,
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+photoStatus: {
+  position: 'absolute',
+  bottom: 10,
+  left: 10,
+  paddingVertical: 4,
+  paddingHorizontal: 8,
+  borderRadius: 12,
+},
+confirmedStatus: {
+  backgroundColor: 'rgba(76, 175, 80, 0.8)',
+},
+pendingStatus: {
+  backgroundColor: 'rgba(255, 193, 7, 0.8)',
+},
+statusText: {
+  color: 'white',
+  fontSize: 12,
+  fontWeight: 'bold',
+},
+photosSection: {
+  marginTop: 15,
+  marginBottom: 10,
+},
+horizontalGallery: {
+  paddingVertical: 10,
+},
+photoCard: {
+  width: 280,
+  marginRight: 15,
+  backgroundColor: 'white',
+  borderRadius: 10,
+  padding: 10,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+  shadowRadius: 4,
+  elevation: 3,
+},
+galleryImage: {
+  width: '100%',
+  height: 180,
+  borderRadius: 8,
+},
+photoControls: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  marginTop: 10,
+  flexWrap: 'wrap',
+},
+controlButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  paddingVertical: 8,
+  paddingHorizontal: 12,
+  borderRadius: 6,
+  marginTop: 5,
+},
+controlButtonText: {
+  color: 'white',
+  fontSize: 14,
+  marginLeft: 5,
+},
+deleteButton: {
+  backgroundColor: '#FF3B30',
+},
+confirmButton: {
+  backgroundColor: '#1E3A8A',
+},
+confirmedStatus: {
+  backgroundColor: '#4CAF50',
+},
+viewShot: {
+  width: '100%',
+},
+watermarkContainer: {
+  position: 'absolute',
+  bottom: 0,
+  left: 0,
+  right: 0,
+  backgroundColor: 'rgba(0,0,0,0.7)',
+  padding: 8,
+},
+watermarkText: {
+  color: 'white',
+  fontSize: 10,
+  textAlign: 'center',
+},
+sectionTitle: {
+  fontSize: 16,
+  fontWeight: '600',
+  color: '#333',
+  marginBottom: 10,
+},
+disabledInput: {
+  backgroundColor: '#f0f0f0',
+  color: '#666',
+},
+disabledButton: {
+  opacity: 0.6,
+  backgroundColor: '#1E3A8A',
+},
 });

@@ -51,10 +51,41 @@ const BitacoraForm = ({ navigation, route }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showHoraInicioPicker, setShowHoraInicioPicker] = useState(false);
   const [showHoraFinPicker, setShowHoraFinPicker] = useState(false);
-
+  const [ordenServicioId, setOrdenServicioId] = useState(null);
   useEffect(() => {
     console.log("Params recibidos:", route.params); // ¿Aparece idSupervisor aquí?
   }, []);
+
+        //obtención del id de la orden de servicio
+  useEffect(() => {
+        const fetchOrdenServicio = async () => {
+          try {
+            const response = await fetch(`https://admin.grupoproeje.com.mx/api/orden-servicio-app?guardia_id=${datosCompletos.id}`);
+            const result = await response.json();
+            
+            console.log('Respuesta de la API de órdenes:', result);
+    
+            if (response.ok) {
+              const ordenesData = Array.isArray(result) ? result : [result];
+              const ordenActiva = ordenesData.find(orden => orden && !orden.eliminado);
+              if (ordenActiva) {
+                setOrdenServicioId(ordenActiva.id);
+              } else {
+                Alert.alert('Error', 'No se encontró una orden de servicio activa');
+              }
+            } else {
+              Alert.alert('Error', result.message || 'Error al cargar las órdenes de servicio');
+            }
+          } catch (err) {
+            console.error('Error al obtener órdenes:', err);
+            Alert.alert('Error', 'Error de conexión al servidor');
+          } finally {
+            setFetchingOrden(false);
+          }
+        };
+    
+        fetchOrdenServicio();
+  }, [datosCompletos.id]);
   
   const handleChange = (name, value) => {
     setFormData({
@@ -230,37 +261,103 @@ const BitacoraForm = ({ navigation, route }) => {
     }
   };
 
-  const saveBitacora = async () => {
-    try {
-      const bitacoraData = {
-        ...formData,
-        numeroEmpleado: numeroEmpleado,
-        nombre: nombre,
-        createdAt: serverTimestamp(),
-        
-      };
-  
-      // Guardar en bitacoras (genera ID automático)
-      const docRef = await addDoc(collection(db, "bitacoras"), bitacoraData);
-  
-      // Opción 1: Guardar en bitacorasArchivadas con mismo ID
-      await setDoc(doc(db, "bitacorasArchivadas", docRef.id), bitacoraData);
-  
-      // Opción alternativa 2: Guardar con ID automático diferente
-      // await addDoc(collection(db, "bitacorasArchivadas"), bitacoraData);
-  
-      alert('Bitácora guardada correctamente');
-      navigation.goBack();
-    } catch (error) {
-      console.error('Error al guardar la bitácora:', error);
-      alert('Error al guardar la bitácora: ' + error.message);
+const guardarBitacora = async () => {
+  try {
+    const bitacoraData = {
+      ...formData,
+      numeroEmpleado: numeroEmpleado,
+      nombre: nombre,
+      createdAt: serverTimestamp(),
+    };
+
+    // Guardar en Firebase (como ya lo tenías)
+    const docRef = await addDoc(collection(db, "bitacoras"), bitacoraData);
+    await setDoc(doc(db, "bitacorasArchivadas", docRef.id), bitacoraData);
+
+    // Enviar a la API externa
+    const apiSuccess = await guardarReporteAPI(bitacoraData);
+    
+    if (apiSuccess) {
+      alert('Bitácora guardada correctamente en ambos sistemas');
+    } else {
+      alert('Bitácora guardada en Firebase pero hubo un error al enviar a la API externa');
     }
-  };
+    
+    navigation.goBack();
+  } catch (error) {
+    console.error('Error al guardar la bitácora:', error);
+    alert('Error al guardar la bitácora: ' + error.message);
+  }
+};
 
   // Función para formatear solo la hora
   const formatTime = (date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
+  const formatTimeForAPI = (date) => {
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}:00`;
+};
+
+  const guardarReporteAPI = async (bitacoraData) => {
+  try {
+    // Adaptar la estructura de datos para la API externa
+    const apiData = {
+      guardia_id: numeroEmpleado, 
+      orden_servicio_id: ordenServicioId, //orden de servicio que se obtiene en el use effect, mejora posible obtener la orden en general y guardarla en el async storge
+      codigo_servicio: bitacoraData.servicio,
+      patrulla: bitacoraData.patrulla,
+      zona: bitacoraData.zona,
+      kilometraje: parseInt(bitacoraData.kilometraje) || 0,
+      litros_carga: parseInt(bitacoraData.litrosCarga) || 0,
+      fecha: bitacoraData.fecha.toISOString().split('T')[0], // Formato YYYY-MM-DD
+      hora_inicio_recorrido: formatTimeForAPI(bitacoraData.horaInicioRecorrido),
+      hora_fin_recorrido: formatTimeForAPI(bitacoraData.horaFinRecorrido),
+      guardias: bitacoraData.guardias.map(guardia => ({
+        nombre_guardia: guardia.nombre,
+        numero_empleado: guardia.numeroEmpleado,
+        items: {
+          camisa: guardia.checkItems.camisa,
+          chaleco: guardia.checkItems.chaleco,
+          corbata: guardia.checkItems.corbata,
+          esposas: guardia.checkItems.esposas,
+          fornitura: guardia.checkItems.fornitura,
+          gas: guardia.checkItems.gas,
+          llave: guardia.checkItems.llave,
+          pantalon: guardia.checkItems.pantalon,
+          peloCorto: guardia.checkItems.peloCorto,
+          puntualidad: guardia.checkItems.puntualidad,
+          rasurado: guardia.checkItems.rasurado,
+          reportes: guardia.checkItems.reportes,
+          tocado: guardia.checkItems.tocado,
+          tolete: guardia.checkItems.tolete,
+          zapatos: guardia.checkItems.zapatos
+        }
+      }))
+    };
+    //feth para mandar la bitacora
+    const response = await fetch('https://admin.grupoproeje.com.mx/api/reporte-bitacoras', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(apiData)
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error en la API: ${response.status}`);
+    }
+
+    const responseData = await response.json();
+    console.log('Respuesta de la API externa:', responseData);
+    return true;
+  } catch (error) {
+    console.error('Error al enviar a la API externa:', error);
+    return false;
+  }
+};
 
   return (
       <SafeAreaView style={styles.safeArea}>
@@ -428,7 +525,7 @@ const BitacoraForm = ({ navigation, route }) => {
                   <Text style={styles.addButtonText}>Agregar Otro Guardia</Text>
                 </TouchableOpacity>
               </View> 
-                <TouchableOpacity style={styles.saveButton} onPress={saveBitacora}>
+                <TouchableOpacity style={styles.saveButton} onPress={guardarBitacora}>
                   <Text style={styles.saveButtonText}>Guardar Bitácora</Text>
                 </TouchableOpacity>
               </ScrollView>

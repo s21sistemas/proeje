@@ -163,7 +163,7 @@ const RegistroUnidad = ({ route }) => {
             keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
           >
         <ScrollView style={styles.container}>
-          <Text style={styles.header}>CHECK LIST AUTO</Text>
+          <Text style={styles.header}>CHECK LIST PATRULLA</Text>
             <View style={styles.profileHeader}>
                   <View style={styles.profileInfo}>
                     <Text style={styles.profileName}>Supervisor: {nombre}</Text>
