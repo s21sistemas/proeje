@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity, Alert, Image, ScrollView } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -18,6 +18,8 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
   const [loading, setLoading] = useState(false);
   const [image, setImage] = useState(null);
   const [cameraPermission, requestCameraPermission] = ImagePicker.useCameraPermissions();
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const cameraRef = useRef(null);
 
   if (!permission || !cameraPermission) {
     return <View />;
@@ -41,15 +43,11 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
   const handleBarCodeScanned = ({ type, data }) => {
     setScanned(true);
     setQrData(data);
+    setIsCameraActive(false);
     Alert.alert(
       "QR Escaneado",
       `Contenido: ${data}`,
-      [
-        {
-          text: "OK",
-          onPress: () => console.log("OK Pressed"),
-        },
-      ]
+      [{ text: "OK", onPress: () => console.log("OK Pressed") }]
     );
   };
 
@@ -58,6 +56,15 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
     setQrData(null);
     setComment('');
     setImage(null);
+    setIsCameraActive(false);
+  };
+
+  const toggleCamera = () => {
+    if (!isCameraActive && !permission.granted) {
+      requestPermission();
+      return;
+    }
+    setIsCameraActive(!isCameraActive);
   };
 
   const takePicture = async () => {
@@ -76,7 +83,7 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
     }
   };
 
-  const subirImagen = async (uri) => {
+  const uploadImage = async (uri) => {
     const blob = await new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.onload = function() {
@@ -98,64 +105,58 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
   };
 
   const guardarReporte = async () => {
-  if (!qrData) {
-    Alert.alert("Error", "Primero escanea un código QR");
-    return;
-  }
-
-  setLoading(true);
-  try {
-    let imageUrl = null;
-    if (image) {
-      imageUrl = await subirImagen(image); 
+    if (!qrData) {
+      Alert.alert("Error", "Primero escanea un código QR");
+      return;
     }
 
-        // Opción 1: Si también quieres guardar en Firestore (opcional)
-    
-    await addDoc(collection(db, "RoutesQR"), {
-      numero: qrData,
-      comentario: comment,
-      numero_empleado: datosCompletos.id,
-      nombre: nombre,
-      fecha: serverTimestamp(),
-      evidenciaUrl: imageUrl
-    });
+    setLoading(true);
+    try {
+      let imageUrl = null;
+      if (image) {
+        imageUrl = await uploadImage(image);
+      }
 
-    // Datos para el endpoint
-    const requestData = {
-      guardia_id: datosCompletos.id,
-      uuid: qrData, // El código QR escaneado
-      observaciones: comment,
-      foto: imageUrl
-    };
+      await addDoc(collection(db, "RoutesQR"), {
+        numero: qrData,
+        comentario: comment,
+        numero_empleado: datosCompletos.id,
+        nombre: nombre,
+        fecha: serverTimestamp(),
+        evidenciaUrl: imageUrl
+      });
 
-    // Opción 1: Solo enviar al endpoint externo
-    const response = await fetch('https://admin.grupoproeje.com.mx/api/recorridos-guardia', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        //'Accept': 'application/json'
+      const requestData = {
+        guardia_id: datosCompletos.id,
+        uuid: qrData,
+        observaciones: comment,
+        foto: imageUrl
+      };
 
-      },
-      body: JSON.stringify(requestData)
-    });
+      const response = await fetch('https://admin.grupoproeje.com.mx/api/recorridos-guardia', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData)
+      });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log("Respuesta del servidor:", result);
+
+      Alert.alert("Listo", "Punto registrado correctamente, recuerda completar la ruta");
+      resetScanner();
+    } catch (error) {
+      console.error("Error al guardar datos:", error);
+      Alert.alert("Error", "No se pudieron guardar los datos");
+    } finally {
+      setLoading(false);
     }
-
-    const result = await response.json();
-    console.log("Respuesta del servidor:", result);
-
-    Alert.alert("Listo", "Punto registrado correctamente, recuerda completar la ruta");
-    resetScanner();
-  } catch (error) {
-    console.error("Error al guardar datos:", error);
-    Alert.alert("Error", "No se pudieron guardar los datos");
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   return (
     <SafeAreaProvider>
@@ -168,9 +169,28 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
                 <Text style={styles.profileBadge}>Empleado #{numeroEmpleado}</Text>
               </View>
             </View>
-            {!scanned ? (
+            
+            {!scanned && (
+              <TouchableOpacity 
+                style={styles.cameraButton} 
+                onPress={toggleCamera}
+                disabled={loading}
+              >
+                <MaterialIcons 
+                  name={"camera-alt"} 
+                  size={20} 
+                  color="white" 
+                />
+                <Text style={styles.cameraButtonText}>
+                  {isCameraActive ? 'Cerrar cámara' : 'Escanear QR'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {isCameraActive && !scanned && (
               <View style={styles.cameraContainer}>
                 <CameraView
+                  ref={cameraRef}
                   style={styles.camera}
                   facing={facing}
                   barcodeScannerSettings={{
@@ -181,7 +201,9 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
                 <View style={styles.scanFrame} />
                 <Text style={styles.scanText}>Escanea el código QR de la ruta</Text>
               </View>
-            ) : (
+            )}
+
+            {scanned && (
               <View style={styles.scannedDataContainer}>
                 <Text style={styles.scannedDataTitle}>Datos escaneados:</Text>
                 <Text style={styles.scannedData}>{qrData}</Text>
@@ -191,7 +213,7 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
                   style={styles.commentInput}
                   multiline
                   numberOfLines={4}
-                  placeholder="Agrega cualquier comentario relevante..."
+                  placeholder="Agrega un comentario..."
                   value={comment}
                   onChangeText={setComment}
                 />
@@ -214,23 +236,23 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
                   disabled={loading}
                 >
                   <MaterialIcons name="add-a-photo" size={20} color="white" />
-                  <Text style={styles.buttonText}>
-                    {image ? 'Cambiar foto de evidencia' : 'Tomar foto de evidencia'}
+                  <Text style={styles.photoButtonText}>
+                    {image ? 'Cambiar foto' : 'Tomar foto'}
                   </Text>
                 </TouchableOpacity>
                 
                 <View style={styles.buttonGroup}>
                   <TouchableOpacity 
-                    style={[styles.button, styles.cancelButton]} 
+                    style={styles.cancelButton} 
                     onPress={resetScanner}
                     disabled={loading}
                   >
                     <MaterialIcons name="cancel" size={20} color="white" />
-                    <Text style={styles.buttonText}>Cancelar</Text>
+                    <Text style={styles.actionButtonText}>Cancelar</Text>
                   </TouchableOpacity>
                   
                   <TouchableOpacity 
-                    style={[styles.button, styles.saveButton]} 
+                    style={styles.saveButton} 
                     onPress={guardarReporte}
                     disabled={loading}
                   >
@@ -239,7 +261,7 @@ export default function ListarSolicitudesAtendidasScreen({ route }) {
                     ) : (
                       <>
                         <MaterialIcons name="save" size={20} color="white" />
-                        <Text style={styles.buttonText}>Guardar</Text>
+                        <Text style={styles.actionButtonText}>Guardar</Text>
                       </>
                     )}
                   </TouchableOpacity>
@@ -275,7 +297,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 5,
     marginBottom: 20,
-
   },
   profileInfo: {
     flex: 1,
@@ -294,13 +315,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 10,
     alignSelf: 'flex-start',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 20,
-    color: '#2c3e50',
   },
   permissionText: {
     fontSize: 16,
@@ -380,15 +394,6 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     backgroundColor: 'white',
   },
-  photoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#1E4A8D',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 20,
-  },
   imageContainer: {
     position: 'relative',
     marginBottom: 20,
@@ -412,26 +417,64 @@ const styles = StyleSheet.create({
   buttonGroup: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: 10,
   },
-  button: {
+  cameraButton: {
+    backgroundColor: '#1E4A8D',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 15,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: 45,
+  },
+  cameraButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    marginLeft: 8,
+    fontSize: 16,
+  },
+  photoButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    flex: 1,
-    marginHorizontal: 5,
+    backgroundColor: '#1E4A8D',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 15,
+    height: 45,
   },
-  cancelButton: {
-    backgroundColor: '#e74c3c',
-  },
-  saveButton: {
-    backgroundColor: '#27ae60',
-  },
-  buttonText: {
+  photoButtonText: {
     color: 'white',
     fontWeight: 'bold',
-    marginLeft: 10,
+    marginLeft: 8,
+    fontSize: 16,
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: '#e74c3c',
+    padding: 10,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: 45,
+  },
+  saveButton: {
+    flex: 1,
+    backgroundColor: '#27ae60',
+    padding: 10,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: 45,
+  },
+  actionButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    marginLeft: 8,
+    fontSize: 16,
   },
 });

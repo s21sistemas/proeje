@@ -22,7 +22,10 @@ import { useNavigation } from '@react-navigation/native';
 
 
 export default function CheckGuardias({ route }) {
-  const { nombre, numeroEmpleado } = route.params;
+    const { nombre, numeroEmpleado, datosCompletos} = route.params || {};
+       const id = datosCompletos?.id;
+      const [ordenServicioId, setOrdenServicioId] = useState(null);
+      const [ordenServicio, setOrdenServicio] = useState(null);
   const [comentarios, setComentarios] = useState("");
   const [foto, setFoto] = useState("");
   const [fotoConMarca, setFotoConMarca] = useState("");
@@ -39,6 +42,7 @@ export default function CheckGuardias({ route }) {
   const navigation = useNavigation();
 
   useEffect(() => {
+    
     (async () => {
       const cameraStatus = await ImagePicker.requestCameraPermissionsAsync();
       setHasCameraPermission(cameraStatus.status === 'granted');
@@ -51,6 +55,64 @@ export default function CheckGuardias({ route }) {
     })();
   }, []);
 
+      useEffect(() => {
+            const fetchOrdenServicio = async () => {
+              try {
+                const response = await fetch(`https://admin.grupoproeje.com.mx/api/orden-servicio-app?guardia_id=${id}`);
+                const result = await response.json();
+                
+                console.log('Respuesta de la API de órdenes:', result);
+        
+                if (response.ok) {
+                  const ordenesData = Array.isArray(result) ? result : [result];
+                  const ordenActiva = ordenesData.find(orden => orden && !orden.eliminado);
+                  if (ordenActiva) {
+  
+                    setOrdenServicioId(ordenActiva.id);
+                    setOrdenServicio(ordenActiva);
+                  } else {
+                    Alert.alert('Error', 'No se encontró una orden de servicio activa');
+                  }
+                } else {
+                  Alert.alert('Error', result.message || 'Error al cargar las órdenes de servicio');
+                }
+              } catch (err) {
+                console.error('Error al obtener órdenes:', err);
+                Alert.alert('Error', 'Error de conexión al servidor');
+              } finally {
+                setFetchingOrden(false);
+              }
+            };
+        
+            fetchOrdenServicio();
+      }, [datosCompletos.id]);
+
+  const verificarEstadoGuardia = async () => {
+        try {
+          const lastCheck = await AsyncStorage.getItem('lastCheckAPI');
+          if (lastCheck) {
+            const lastCheckData = JSON.parse(lastCheck);
+      
+          // Mostrar en consola
+           console.log("Datos recuperados de AsyncStorage:", lastCheckData);
+
+            if (!lastCheckData.message.includes("Check-out")) {
+              Alert.alert(
+                "Aviso", 
+                `Tienes un check-in registrado, recuerda registrar tu check out al finalizar tu turno.`
+              );
+            }
+          }
+        } catch (error) {
+          console.error("Error al verificar estado:", error);
+        }
+      };
+
+// Llama a esta función en tu useEffect principal
+  useEffect(() => {
+  verificarEstadoGuardia();
+
+}, []);
   const handleLogout = async () => {
     try {
       setLoading(true);
@@ -129,36 +191,53 @@ export default function CheckGuardias({ route }) {
     }
   };
 
-  const obtenerUbicacionYHora = async (tipo) => {
-    if (!hasLocationPermission) {
-      Alert.alert('Permiso denegado', 'Necesitas otorgar permisos para obtener la ubicación.');
-      return;
-    }
+const obtenerUbicacionYHora = async (tipo) => {
+  if (!hasLocationPermission) {
+    Alert.alert('Permiso denegado', 'Necesitas otorgar permisos para obtener la ubicación.');
+    return;
+  }
 
-    try {
-      setLoading(true);
-      setTipoCheck(tipo);
-      
-      let location = await Location.getCurrentPositionAsync({});
-      setUbicacion(location.coords);
-      
-      const address = await Location.reverseGeocodeAsync(location.coords);
-      if (address.length > 0) {
-        const dir = `${address[0].street}, ${address[0].city}, ${address[0].region}, ${address[0].country}`;
-        setDireccion(dir);
+  try {
+    setLoading(true);
+    
+    // Verificar si ya hay un check-in sin check-out
+    if (tipo === 'in') {
+      const lastCheck = await AsyncStorage.getItem('lastCheckAPI');
+      if (lastCheck) {
+        const lastCheckData = JSON.parse(lastCheck);
+        if (!lastCheckData.message.includes("Check-out")) {
+          Alert.alert(
+            "Check-in pendiente", 
+            `Ya tienes un check-in registrado el ${lastCheckData.fecha_entrada}. Debes hacer check-out primero.`
+          );
+          setLoading(false);
+          return;
+        }
       }
-      
-      const ahora = new Date();
-      const horaStr = ahora.toLocaleTimeString();
-      setHora(horaStr);
-      
-      Alert.alert("Información obtenida", `Check ${tipo === 'in' ? 'In' : 'Out'} registrado a las ${horaStr}`);
-    } catch (error) {
-      Alert.alert("Error", "No se pudo obtener la ubicación");
-    } finally {
-      setLoading(false);
     }
-  };
+    
+    setTipoCheck(tipo);
+    
+    let location = await Location.getCurrentPositionAsync({});
+    setUbicacion(location.coords);
+    
+    const address = await Location.reverseGeocodeAsync(location.coords);
+    if (address.length > 0) {
+      const dir = `${address[0].street}, ${address[0].city}, ${address[0].region}, ${address[0].country}`;
+      setDireccion(dir);
+    }
+    
+    const ahora = new Date();
+    const horaStr = ahora.toLocaleTimeString();
+    setHora(horaStr);
+    
+    Alert.alert("Información obtenida", `Check ${tipo === 'in' ? 'In' : 'Out'} registrado a las ${horaStr}`);
+  } catch (error) {
+    Alert.alert("Error", "No se pudo obtener la ubicación");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const uploadImageToFirebase = async (imageUri) => {
     try {
@@ -176,39 +255,139 @@ export default function CheckGuardias({ route }) {
     }
   };
 
-  const enviarCheck = async () => {
-    if (!tipoCheck) {
-      Alert.alert("Error", "Debes hacer check-in o check-out primero");
-      return;
-    }
+ //función que crea y envia el check in o check out  y lo envia a la api 
+const enviarCheckAPI = async (checkData) => {
+  try {
+    let imageURL = await uploadImageToFirebase(fotoConMarca);
+    
+    // Payload base para ambos casos
+    let requestBody = {
+      foto: imageURL
+    };
 
-    if (!fotoConMarca) {
-      Alert.alert("Error", "Debes generar la foto con marca de agua primero");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      let imageURL = await uploadImageToFirebase(fotoConMarca);
-
-      const checkData = {
-        nombre,
-        numeroEmpleado,
-        tipo: tipoCheck,
-        ubicacion: direccion || "Ubicación no disponible",
-        coordenadas: ubicacion,
-        hora: hora,
-        fechaHora: fechaHora,
-        comentarios: comentarios,
-        foto: imageURL,
-        fecha: new Date().toISOString(),
-        estado: "Pendiente"
+    // Solo para check-in añadimos todos los datos
+    if (tipoCheck === 'in') {
+      requestBody = {
+        ...requestBody,
+        guardia_id: parseInt(id),
+        orden_servicio_id: ordenServicioId,
+        latitude: checkData.coordenadas.latitude,
+        longitude: checkData.coordenadas.longitude,
+        ubicacion: checkData.ubicacion,
+        comentarios: checkData.comentarios
       };
+    }
 
-      await addDoc(collection(db, "guardias_check"), checkData);
+    console.log("Request Body:", JSON.stringify(requestBody, null, 2));
+    
+    // Determinar la URL y método según el tipo de check
+    let url = 'https://admin.grupoproeje.com.mx/api/check-guardia';
+    let method = 'POST';
+    console.log(url);
+    // Si es check-out, usamos el ID guardado y cambiamos a PUT
+    if (tipoCheck === 'out') {
+      const lastCheck = await AsyncStorage.getItem('lastCheckAPI');
+      if (lastCheck) {
+        const lastCheckData = JSON.parse(lastCheck);
+        url = `https://admin.grupoproeje.com.mx/api/check-guardia/${lastCheckData.id}`;
+        method = 'PUT';
+        console.log(url);
+      } else {
+        Alert.alert("Error", "No se encontró un check-in previo");
+        return null;
+      }
+    }
+    
+    const response = await fetch(url, {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody)
+    });
 
-      Alert.alert("Éxito", `Check ${tipoCheck === 'in' ? 'In' : 'Out'} registrado correctamente`);
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error("Error al enviar a API:", error);
+    return null;
+  }
+};
+
+const obtenerUltimoCheck = async () => {
+  try {
+    // Obtener los datos almacenados
+    const datosGuardados = await AsyncStorage.getItem('lastCheckAPI');
+    
+    if (datosGuardados) {
+      // Parsear los datos de JSON a objeto
+      const datosParseados = JSON.parse(datosGuardados);
+      
+      // Mostrar en consola
+      console.log("Datos recuperados de AsyncStorage:", datosParseados);
+      
+      // Mostrar en alerta (útil en dispositivos físicos)
+      Alert.alert(
+        "Datos almacenados",
+        `ID: ${datosParseados.id}\nMensaje: ${datosParseados.message}`
+      );
+      
+      return datosParseados;
+    } else {
+      console.log("No hay datos guardados en AsyncStorage");
+      Alert.alert("Información", "No se encontraron datos almacenados");
+      return null;
+    }
+  } catch (error) {
+    console.error("Error al recuperar datos:", error);
+    Alert.alert("Error", "No se pudieron recuperar los datos");
+    return null;
+  }
+};
+
+
+// Valida check in o checkout en los botones y llama a enviarcheckAPI
+const enviarCheck = async () => {
+  if (!tipoCheck) {
+    Alert.alert("Error", "Debes hacer check-in o check-out primero");
+    return;
+  }
+
+  if (!fotoConMarca) {
+    Alert.alert("Error", "Debes generar la foto con marca de agua primero");
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    const checkData = {
+      nombre,
+      numeroEmpleado,
+      tipo: tipoCheck,
+      ubicacion: direccion || "Ubicación no disponible",
+      coordenadas: ubicacion,
+      hora: hora,
+      fechaHora: fechaHora,
+      comentarios: tipoCheck === 'in' ? comentarios : "", // Solo comentarios para check-in
+      foto: "", // La URL se genera en enviarCheckAPI
+      fecha: new Date().toISOString()
+    };
+
+    const apiResponse = await enviarCheckAPI(checkData);
+    
+    if (apiResponse) {
+      let successMessage = apiResponse.message || 
+                         `Check ${tipoCheck === 'in' ? 'In' : 'Out'} registrado correctamente`;
+      
+      Alert.alert("Éxito", successMessage);
+      
+      // Actualizar AsyncStorage
+      if (tipoCheck === 'in') {
+        await AsyncStorage.setItem('lastCheckAPI', JSON.stringify(apiResponse));
+      } else {
+        await AsyncStorage.removeItem('lastCheckAPI');
+      }
 
       // Limpiar formulario
       setComentarios("");
@@ -219,13 +398,16 @@ export default function CheckGuardias({ route }) {
       setHora("");
       setFechaHora("");
       setTipoCheck("");
-    } catch (error) {
-      console.error("Error al guardar:", error);
+    } else {
       Alert.alert("Error", "No se pudo registrar el check");
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (error) {
+    console.error("Error al guardar:", error);
+    Alert.alert("Error", "No se pudo registrar el check");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
       <SafeAreaView style={styles.safeArea}>
@@ -314,17 +496,22 @@ export default function CheckGuardias({ route }) {
                 </Pressable>
               </View>
             )}
-
-            <Text style={styles.label}>Comentarios:</Text>
-            <TextInput
-              style={[styles.input, styles.comentariosInput]}
-              placeholder="Ingrese comentarios (opcional)"
-              onChangeText={setComentarios}
-              value={comentarios}
-              multiline
-              numberOfLines={4}
-              editable={!loading}
-            />
+            
+              {tipoCheck === 'in' && (
+                <>
+                  <Text style={styles.label}>Comentarios:</Text>
+                  <TextInput
+                    style={[styles.input, styles.comentariosInput]}
+                    placeholder="Ingrese comentarios (opcional)"
+                    onChangeText={setComentarios}
+                    value={comentarios}
+                    multiline
+                    numberOfLines={4}
+                    editable={!loading}
+                  />
+                </>
+              )}
+            
 
             <Pressable 
               style={[styles.submitButton, (loading || !fotoConMarca) && styles.disabledButton]} 

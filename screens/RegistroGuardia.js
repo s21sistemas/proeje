@@ -17,6 +17,7 @@ import { collection, addDoc } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import ViewShot from 'react-native-view-shot';
 import * as MediaLibrary from 'expo-media-library';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function RegistroGuardia({ route }) {
   const { nombre, numeroEmpleado, ordenServicio } = route.params;
@@ -35,9 +36,11 @@ export default function RegistroGuardia({ route }) {
   const [idServicio, setIdServicio] = useState(ordenServicio?.id || "");
   const [nombreGuardia, setNombreGuardia] = useState("");
   const [fotoGaleria, setFotoGaleria] = useState("");
+  const [checkInId, setCheckInId] = useState(null); // Para almacenar el ID del check-in
   const viewShotRef = useRef(null);
 
   useEffect(() => {
+    console.log('registroGuardia js check guardia eventual ? ');
     (async () => {
       const cameraStatus = await ImagePicker.requestCameraPermissionsAsync();
       setHasCameraPermission(cameraStatus.status === 'granted');
@@ -47,8 +50,36 @@ export default function RegistroGuardia({ route }) {
 
       const mediaStatus = await MediaLibrary.requestPermissionsAsync();
       setHasMediaPermission(mediaStatus.status === 'granted');
+
+      // Verificar si hay un check-in pendiente en AsyncStorage
+      await verificarCheckInPendiente();
     })();
   }, []);
+
+  // Verificar si hay un check-in pendiente sin check-out
+  const verificarCheckInPendiente = async () => {
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      const checkInKeys = keys.filter(key => key.startsWith('check_guardia_'));
+      
+      if (checkInKeys.length > 0) {
+        // Tomamos el más reciente (podría mejorarse con fecha/hora)
+        const latestKey = checkInKeys[checkInKeys.length - 1];
+        const checkInData = await AsyncStorage.getItem(latestKey);
+        const parsedData = JSON.parse(checkInData);
+        
+        if (parsedData && parsedData.id) {
+          setCheckInId(parsedData.id);
+          Alert.alert(
+            'Check-in pendiente', 
+            'Tienes un check-in registrado sin check-out. Debes hacer check-out primero.'
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error al verificar check-in pendiente:', error);
+    }
+  };
 
   const seleccionarFotoGaleria = async () => {
     try {
@@ -142,6 +173,12 @@ export default function RegistroGuardia({ route }) {
       return;
     }
 
+    // Para checkout, verificar que haya un checkin previo
+    if (tipo === 'out' && !checkInId) {
+      Alert.alert('Error', 'No puedes hacer check-out sin haber hecho check-in primero');
+      return;
+    }
+
     try {
       setLoading(true);
       setTipoCheck(tipo);
@@ -183,6 +220,51 @@ export default function RegistroGuardia({ route }) {
     }
   };
 
+  const enviarDatosAPI = async (data, esCheckout = false) => {
+    try {
+      let url = 'https://admin.grupoproeje.com.mx/api/check-guardia-eventual';
+      let method = 'POST';
+      
+      if (esCheckout) {
+        if (!checkInId) {
+          throw new Error('No hay un check-in registrado para hacer check-out');
+        }
+        url = `https://admin.grupoproeje.com.mx/api/check-guardia/${checkInId}`;
+        method = 'PUT';
+        // Para checkout solo necesitamos la foto
+        data = { foto: data.foto };
+      }
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        if (!esCheckout) {
+          // Guardar el ID del check-in en AsyncStorage
+          await AsyncStorage.setItem(`check_guardia_${result.id}`, JSON.stringify(result));
+          setCheckInId(result.id);
+        } else {
+          // Eliminar el check-in de AsyncStorage al hacer check-out
+          await AsyncStorage.removeItem(`check_guardia_${checkInId}`);
+          setCheckInId(null);
+        }
+        return result;
+      } else {
+        throw new Error(result.message || 'Error al enviar datos a la API');
+      }
+    } catch (error) {
+      console.error('Error al enviar datos a la API:', error);
+      throw error;
+    }
+  };
+
   const enviarCheck = async () => {
     if (!tipoCheck) {
       Alert.alert("Error", "Debes hacer check-in o check-out primero");
@@ -201,6 +283,9 @@ export default function RegistroGuardia({ route }) {
         ? await uploadImageToFirebase(fotoConMarca) 
         : await uploadImageToFirebase(fotoGaleria);
 
+      const esCheckout = tipoCheck === 'out';
+      
+      // Datos para Firestore
       const checkData = {
         nombre: nombreGuardia,
         numeroEmpleado,
@@ -217,9 +302,29 @@ export default function RegistroGuardia({ route }) {
         ordenServicio: ordenServicio || null
       };
 
-      await addDoc(collection(db, "guardias_check"), checkData);
+      // Datos para la API
+      const apiData = {
+        nombre_guardia: nombreGuardia,
+        orden_servicio_id: idServicio,
+        latitude: ubicacion?.latitude || 0,
+        longitude: ubicacion?.longitude || 0,
+        ubicacion: direccion || "Ubicación no disponible",
+        comentarios: comentarios,
+        foto: imageURL
+      };
 
-      Alert.alert("Éxito", `Check ${tipoCheck === 'in' ? 'In' : 'Out'} registrado correctamente`);
+      // Enviar a ambos sistemas en paralelo
+      const [firestoreResult, apiResult] = await Promise.all([
+        //addDoc(collection(db, "guardias_check"), checkData),
+        enviarDatosAPI(apiData, esCheckout)
+      ]);
+
+      Alert.alert(
+        "Éxito", 
+        esCheckout 
+          ? "Check-out registrado correctamente" 
+          : "Check-in registrado correctamente"
+      );
 
       // Limpiar formulario
       setComentarios("");
@@ -233,169 +338,172 @@ export default function RegistroGuardia({ route }) {
       setTipoCheck("");
     } catch (error) {
       console.error("Error al guardar:", error);
-      Alert.alert("Error", "No se pudo registrar el check");
+      Alert.alert(
+        "Error", 
+        error.message || "No se pudo registrar el check"
+      );
     } finally {
       setLoading(false);
     }
   };
 
   return (
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardAvoiding}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+      >
+        <ScrollView contentContainerStyle={styles.container}>
+          <View style={styles.headerContainer}>
+            <Text style={styles.header}>Check para guardia eventual</Text>
+            <Text style={styles.subheader}></Text>
+          </View>
+          <View style={styles.profileHeader}>
+            <View style={styles.profileInfo}>
+              <Text style={styles.profileName}>Supervisor: {nombre}</Text>
+              <Text style={styles.profileBadge}>Empleado #{numeroEmpleado}</Text>
+              {idServicio && (
+                <Text style={styles.profileBadge}>Servicio #{idServicio}</Text>
+              )}
+            </View>
+          </View>
 
-        <SafeAreaView style={styles.safeArea}>
-              <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={styles.keyboardAvoiding}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Nombre del Guardia:</Text>
+            <TextInput
+              style={styles.input}
+              value={nombreGuardia}
+              onChangeText={setNombreGuardia}
+              editable={!loading}
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>ID de Servicio:</Text>
+            <TextInput
+              style={styles.input}
+              value={idServicio}
+              onChangeText={setIdServicio}
+              editable={!loading}
+              placeholder="Ingrese el ID del servicio"
+            />
+          </View>
+          <View style={styles.headerContainer}>
+            <Text style={styles.label}>Selecciona el tipo de check:</Text>
+          </View>
+
+          <View style={styles.buttonContainer}>
+            <Pressable 
+              style={[styles.checkButton, styles.checkInButton]} 
+              onPress={() => obtenerUbicacionYHora('in')}
+              disabled={loading || checkInId !== null} // Deshabilitar si ya hay check-in
+            >
+              <Text style={styles.buttonText}>Check In</Text>
+            </Pressable>
+
+            <Pressable 
+              style={[styles.checkButton, styles.checkOutButton]} 
+              onPress={() => obtenerUbicacionYHora('out')}
+              disabled={loading || checkInId === null} // Deshabilitar si no hay check-in
+            >
+              <Text style={styles.buttonText}>Check Out</Text>
+            </Pressable>
+          </View>
+
+          {loading && <ActivityIndicator size="large" color="#009BFF" />}
+
+          {(direccion || hora) && (
+            <View style={styles.infoContainer}>
+              <Text style={styles.infoText}>Tipo: {tipoCheck === 'in' ? 'Check In' : 'Check Out'}</Text>
+              <Text style={styles.infoText}>Hora: {hora}</Text>
+              <Text style={styles.infoText}>Ubicación: {direccion}</Text>
+              {checkInId && tipoCheck === 'in' && (
+                <Text style={styles.infoText}>ID de registro: {checkInId}</Text>
+              )}
+            </View>
+          )}
+
+          <View style={styles.photoButtonsContainer}>
+            <Pressable 
+              style={[styles.button, styles.photoButton]}
+              onPress={seleccionarFotoGaleria}
+              disabled={loading}
+            >
+              <Text style={styles.buttonText}>Seleccionar foto</Text>
+            </Pressable>
+            
+            <Pressable 
+              onPress={tomarFoto} 
+              style={[styles.button, styles.photoButton]}
+              disabled={loading}
+            >
+              <Text style={styles.buttonText}>Tomar foto</Text>
+            </Pressable>
+          </View>
+
+          {foto && (
+            <View style={styles.imageContainer}>
+              <ViewShot 
+                ref={viewShotRef} 
+                options={{ format: "jpg", quality: 0.9 }}
+                style={styles.viewShot}
               >
-                <ScrollView contentContainerStyle={styles.container}>
-                <View style={styles.headerContainer}>
-                    <Text style={styles.header}>Check para guardia eventual</Text>
-                    <Text style={styles.subheader}></Text>
-                  
-                  </View>
-                  <View style={styles.profileHeader}>
-                    <View style={styles.profileInfo}>
-                      <Text style={styles.profileName}>Supervisor: {nombre}</Text>
-                      <Text style={styles.profileBadge}>Empleado #{numeroEmpleado}</Text>
-                      {idServicio && (
-                        <Text style={styles.profileBadge}>Servicio #{idServicio}</Text>
-                      )}
-                    </View>
+                <Image source={{ uri: foto }} style={styles.image} />
+                <View style={styles.watermarkContainer}>
+                  <Text style={styles.watermarkText}>{fechaHora}</Text>
+                  <Text style={styles.watermarkText}>{nombreGuardia} - {numeroEmpleado}</Text>
+                  <Text style={styles.watermarkText}>Servicio #{idServicio}</Text>
                 </View>
+              </ViewShot>
+              
+              <Pressable 
+                onPress={capturarConMarcaAgua} 
+                style={[styles.button, styles.captureButton]}
+                disabled={loading || !foto}
+              >
+                <Text style={styles.buttonText}>Confirmar foto</Text>
+              </Pressable>
+            </View>
+          )}
 
-                  <View style={styles.formGroup}>
-                    <Text style={styles.label}>Nombre del Guardia:</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={nombreGuardia}
-                      onChangeText={setNombreGuardia}
-                      editable={!loading}
-                    />
-                  </View>
+          {fotoGaleria && !foto && (
+            <View style={styles.imageContainer}>
+              <Image source={{ uri: fotoGaleria }} style={styles.image} />
+              <View style={styles.infoContainer}>
+                <Text style={styles.infoText}>Foto seleccionada de galería</Text>
+                <Text style={styles.infoText}>{nombreGuardia} - {numeroEmpleado}</Text>
+                <Text style={styles.infoText}>Servicio #{idServicio}</Text>
+              </View>
+            </View>
+          )}
 
-                  <View style={styles.formGroup}>
-                    <Text style={styles.label}>ID de Servicio:</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={idServicio}
-                      onChangeText={setIdServicio}
-                      editable={!loading}
-                      placeholder="Ingrese el ID del servicio"
-                    />
-                  </View>
-                  <View style={styles.headerContainer}>
-                    <Text style={styles.label}>Selecciona el tipo de check:</Text>
-                  
-                  </View>
+          <Text style={styles.label}>Comentarios:</Text>
+          <TextInput
+            style={[styles.input, styles.comentariosInput]}
+            placeholder="Ingrese comentarios (opcional)"
+            onChangeText={setComentarios}
+            value={comentarios}
+            multiline
+            numberOfLines={4}
+            editable={!loading}
+          />
 
-                  <View style={styles.buttonContainer}>
-                    <Pressable 
-                      style={[styles.checkButton, styles.checkInButton]} 
-                      onPress={() => obtenerUbicacionYHora('in')}
-                      disabled={loading}
-                    >
-                      <Text style={styles.buttonText}>Check In</Text>
-                    </Pressable>
-
-                    <Pressable 
-                      style={[styles.checkButton, styles.checkOutButton]} 
-                      onPress={() => obtenerUbicacionYHora('out')}
-                      disabled={loading}
-                    >
-                      <Text style={styles.buttonText}>Check Out</Text>
-                    </Pressable>
-                  </View>
-
-                  {loading && <ActivityIndicator size="large" color="#009BFF" />}
-
-                  {(direccion || hora) && (
-                    <View style={styles.infoContainer}>
-                      <Text style={styles.infoText}>Tipo: {tipoCheck === 'in' ? 'Check In' : 'Check Out'}</Text>
-                      <Text style={styles.infoText}>Hora: {hora}</Text>
-                      <Text style={styles.infoText}>Ubicación: {direccion}</Text>
-                    </View>
-                  )}
-
-                  <View style={styles.photoButtonsContainer}>
-                    <Pressable 
-                      style={[styles.button, styles.photoButton]}
-                      onPress={seleccionarFotoGaleria}
-                      disabled={loading}
-                    >
-                      <Text style={styles.buttonText}>Seleccionar foto</Text>
-                    </Pressable>
-                    
-                    <Pressable 
-                      onPress={tomarFoto} 
-                      style={[styles.button, styles.photoButton]}
-                      disabled={loading}
-                    >
-                      <Text style={styles.buttonText}>Tomar foto</Text>
-                    </Pressable>
-                  </View>
-
-                  {foto && (
-                    <View style={styles.imageContainer}>
-                      <ViewShot 
-                        ref={viewShotRef} 
-                        options={{ format: "jpg", quality: 0.9 }}
-                        style={styles.viewShot}
-                      >
-                        <Image source={{ uri: foto }} style={styles.image} />
-                        <View style={styles.watermarkContainer}>
-                          <Text style={styles.watermarkText}>{fechaHora}</Text>
-                          <Text style={styles.watermarkText}>{nombreGuardia} - {numeroEmpleado}</Text>
-                          <Text style={styles.watermarkText}>Servicio #{idServicio}</Text>
-                        </View>
-                      </ViewShot>
-                      
-                      <Pressable 
-                        onPress={capturarConMarcaAgua} 
-                        style={[styles.button, styles.captureButton]}
-                        disabled={loading || !foto}
-                      >
-                        <Text style={styles.buttonText}>Confirmar foto</Text>
-                      </Pressable>
-                    </View>
-                  )}
-
-                  {fotoGaleria && !foto && (
-                    <View style={styles.imageContainer}>
-                      <Image source={{ uri: fotoGaleria }} style={styles.image} />
-                      <View style={styles.infoContainer}>
-                        <Text style={styles.infoText}>Foto seleccionada de galería</Text>
-                        <Text style={styles.infoText}>{nombreGuardia} - {numeroEmpleado}</Text>
-                        <Text style={styles.infoText}>Servicio #{idServicio}</Text>
-                      </View>
-                    </View>
-                  )}
-
-                  <Text style={styles.label}>Comentarios:</Text>
-                  <TextInput
-                    style={[styles.input, styles.comentariosInput]}
-                    placeholder="Ingrese comentarios (opcional)"
-                    onChangeText={setComentarios}
-                    value={comentarios}
-                    multiline
-                    numberOfLines={4}
-                    editable={!loading}
-                  />
-
-                  <Pressable 
-                    style={[styles.submitButton, (loading || (!fotoConMarca && !fotoGaleria)) && styles.disabledButton]} 
-                    onPress={enviarCheck} 
-                    disabled={loading || (!fotoConMarca && !fotoGaleria) || !tipoCheck}
-                  >
-                    <Text style={styles.buttonText}>Enviar Registro</Text>
-                  </Pressable>
-                </ScrollView>
-              </KeyboardAvoidingView>
-        </SafeAreaView>
+          <Pressable 
+            style={[styles.submitButton, (loading || (!fotoConMarca && !fotoGaleria)) && styles.disabledButton]} 
+            onPress={enviarCheck} 
+            disabled={loading || (!fotoConMarca && !fotoGaleria) || !tipoCheck}
+          >
+            <Text style={styles.buttonText}>Enviar Registro</Text>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
- safeArea: {
+  safeArea: {
     flex: 1,
     backgroundColor: '#0A1E3D',
   },
